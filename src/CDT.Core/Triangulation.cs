@@ -366,63 +366,229 @@ public sealed partial class Triangulation<T>
     {
         int count = Vertices.Count - superGeomVertCount;
         var indices = new int[count];
-        for (int i = 0; i < count; i++) indices[i] = superGeomVertCount + i;
-        // Fisher-Yates shuffle
-        var rng = new Random(12345);
+        for (int i = 0; i < count; i++) { indices[i] = superGeomVertCount + i; }
+        // Matches C++ detail::random_shuffle which uses SplitMix64(state=0) fresh per call.
+        ulong state = 0UL;
         for (int i = count - 1; i > 0; i--)
         {
-            int j = rng.Next(i + 1);
+            int j = (int)(SplitMix64(ref state) % (ulong)(i + 1));
             (indices[i], indices[j]) = (indices[j], indices[i]);
         }
-        foreach (int iV in indices)
-            InsertVertex(iV);
+        foreach (int iV in indices) { InsertVertex(iV); }
     }
 
     private void InsertVertices_KDTreeBFS(int superGeomVertCount, Box2d<T> box)
     {
         int vertexCount = Vertices.Count - superGeomVertCount;
-        if (vertexCount <= 0) return;
+        if (vertexCount <= 0) { return; }
 
-        // Build array of indices to insert
         var indices = new int[vertexCount];
-        for (int i = 0; i < vertexCount; i++) indices[i] = superGeomVertCount + i;
+        for (int i = 0; i < vertexCount; i++) { indices[i] = superGeomVertCount + i; }
 
-        // BFS splitting: choose midpoint of sorted range alternating X/Y splits
-        var queue = new Queue<(int lo, int hi, bool splitX, int parent)>();
-        queue.Enqueue((0, vertexCount, box.Max.X - box.Min.X >= box.Max.Y - box.Min.Y, 0));
+        // Matches C++ insertVertices_KDTreeBFS: BFS with portable_nth_element and
+        // box updated from the actual split-vertex coordinate at each level.
+        var queue = new Queue<(int lo, int hi, T boxMinX, T boxMinY, T boxMaxX, T boxMaxY, int parent)>();
+        queue.Enqueue((0, vertexCount, box.Min.X, box.Min.Y, box.Max.X, box.Max.Y, 0));
 
         while (queue.Count > 0)
         {
-            var (lo, hi, splitX, parent) = queue.Dequeue();
-            if (lo >= hi) continue;
-            if (hi - lo == 1)
+            var (lo, hi, boxMinX, boxMinY, boxMaxX, boxMaxY, parent) = queue.Dequeue();
+            int len = hi - lo;
+            if (len == 0) { continue; }
+            if (len == 1) { InsertVertex(indices[lo], parent); continue; }
+
+            int midPos = lo + len / 2;
+
+            if (T.CreateChecked(boxMaxX - boxMinX) >= T.CreateChecked(boxMaxY - boxMinY))
             {
-                InsertVertex(indices[lo], parent);
-                continue;
+                NthElement(indices, lo, midPos, hi, (a, b) => Vertices[a].X.CompareTo(Vertices[b].X));
+                T split = Vertices[indices[midPos]].X;
+                InsertVertex(indices[midPos], parent);
+                if (lo < midPos) { queue.Enqueue((lo, midPos, boxMinX, boxMinY, split, boxMaxY, indices[midPos])); }
+                if (midPos + 1 < hi) { queue.Enqueue((midPos + 1, hi, split, boxMinY, boxMaxX, boxMaxY, indices[midPos])); }
             }
-
-            // Partial sort to find midpoint
-            int mid = lo + (hi - lo) / 2;
-            if (splitX)
-                PartialSort(indices, lo, hi, mid, (a, b) => Vertices[a].X.CompareTo(Vertices[b].X));
             else
-                PartialSort(indices, lo, hi, mid, (a, b) => Vertices[a].Y.CompareTo(Vertices[b].Y));
-
-            int midIdx = indices[mid];
-            InsertVertex(midIdx, parent);
-            queue.Enqueue((lo, mid, !splitX, midIdx));
-            queue.Enqueue((mid + 1, hi, !splitX, midIdx));
+            {
+                NthElement(indices, lo, midPos, hi, (a, b) => Vertices[a].Y.CompareTo(Vertices[b].Y));
+                T split = Vertices[indices[midPos]].Y;
+                InsertVertex(indices[midPos], parent);
+                if (lo < midPos) { queue.Enqueue((lo, midPos, boxMinX, boxMinY, boxMaxX, split, indices[midPos])); }
+                if (midPos + 1 < hi) { queue.Enqueue((midPos + 1, hi, boxMinX, split, boxMaxX, boxMaxY, indices[midPos])); }
+            }
         }
     }
 
-    private static void PartialSort(int[] arr, int lo, int hi, int nth, Comparison<int> cmp)
+    // -------------------------------------------------------------------------
+    // nth_element — port of LLVM's portable_nth_element (matches C++ CDT exactly)
+    // -------------------------------------------------------------------------
+
+    /// <summary>
+    /// Port of LLVM libcxx <c>nth_element</c> used by the C++ CDT for
+    /// <c>insertVertices_KDTreeBFS</c>. Rearranges <paramref name="arr"/>
+    /// in [<paramref name="lo"/>, <paramref name="hi"/>) so the element at
+    /// position <paramref name="nth"/> is the one that would be there after a
+    /// full sort; elements before it are ≤ it and elements after are ≥ it.
+    /// Tie-breaking matches C++ because the algorithm is identical.
+    /// </summary>
+    private static void NthElement(int[] arr, int lo, int nth, int hi, Comparison<int> cmp)
     {
-        // Simple nth_element using partial sort (good enough for reasonably sized inputs)
-        // For large datasets this could be replaced with IntroSelect
-        var sub = new int[hi - lo];
-        Array.Copy(arr, lo, sub, 0, hi - lo);
-        Array.Sort(sub, cmp);
-        Array.Copy(sub, 0, arr, lo, hi - lo);
+        int first = lo, last = hi;
+        while (true)
+        {
+            if (nth == last) { return; }
+            int len = last - first;
+            switch (len)
+            {
+                case 0: case 1: return;
+                case 2:
+                    if (cmp(arr[last - 1], arr[first]) < 0) { (arr[first], arr[last - 1]) = (arr[last - 1], arr[first]); }
+                    return;
+                case 3:
+                    NthSort3(arr, first, first + 1, last - 1, cmp);
+                    return;
+            }
+            if (len <= 7) { NthSelectionSort(arr, first, last, cmp); return; }
+
+            int m = first + len / 2;
+            int lm1 = last - 1;
+            uint nSwaps = NthSort3(arr, first, m, lm1, cmp);
+
+            int i = first, j = lm1;
+
+            if (cmp(arr[i], arr[m]) >= 0)   // !comp(*i, *m)
+            {
+                while (true)
+                {
+                    --j;
+                    if (i == j)
+                    {
+                        ++i;
+                        j = last;
+                        if (cmp(arr[first], arr[--j]) >= 0)   // !comp(*first, *(last-1))
+                        {
+                            while (true)
+                            {
+                                if (i == j) { return; }
+                                if (cmp(arr[first], arr[i]) < 0)
+                                {
+                                    (arr[i], arr[j]) = (arr[j], arr[i]);
+                                    ++nSwaps;
+                                    ++i;
+                                    break;
+                                }
+                                ++i;
+                            }
+                        }
+                        if (i == j) { return; }
+                        while (true)
+                        {
+                            while (cmp(arr[first], arr[i]) >= 0) { ++i; }
+                            do { --j; } while (cmp(arr[first], arr[j]) < 0);
+                            if (i >= j) { break; }
+                            (arr[i], arr[j]) = (arr[j], arr[i]);
+                            ++nSwaps;
+                            ++i;
+                        }
+                        if (nth < i) { return; }
+                        first = i;
+                        goto ContinueOuter;
+                    }
+                    if (cmp(arr[j], arr[m]) < 0)
+                    {
+                        (arr[i], arr[j]) = (arr[j], arr[i]);
+                        ++nSwaps;
+                        break;
+                    }
+                }
+            }
+
+            ++i;
+            if (i < j)
+            {
+                while (true)
+                {
+                    while (cmp(arr[i], arr[m]) < 0) { ++i; }
+                    do { --j; } while (cmp(arr[j], arr[m]) >= 0);
+                    if (i >= j) { break; }
+                    (arr[i], arr[j]) = (arr[j], arr[i]);
+                    ++nSwaps;
+                    if (m == i) { m = j; }
+                    ++i;
+                }
+            }
+
+            if (i != m && cmp(arr[m], arr[i]) < 0)
+            {
+                (arr[i], arr[m]) = (arr[m], arr[i]);
+                ++nSwaps;
+            }
+
+            if (nth == i) { return; }
+
+            if (nSwaps == 0)
+            {
+                if (nth < i)
+                {
+                    int ck = m = first;
+                    while (++ck != i)
+                    {
+                        if (cmp(arr[ck], arr[m]) < 0) { goto NotSorted; }
+                        m = ck;
+                    }
+                    return;
+                }
+                else
+                {
+                    int ck = m = i;
+                    while (++ck != last)
+                    {
+                        if (cmp(arr[ck], arr[m]) < 0) { goto NotSorted; }
+                        m = ck;
+                    }
+                    return;
+                }
+            }
+
+            NotSorted:
+            if (nth < i) { last = i; }
+            else { first = i + 1; }
+            ContinueOuter:;
+        }
+    }
+
+    /// <summary>Sorts three elements at positions x, y, z — port of LLVM sort3.</summary>
+    private static uint NthSort3(int[] arr, int x, int y, int z, Comparison<int> cmp)
+    {
+        uint r = 0;
+        if (cmp(arr[y], arr[x]) >= 0)    // !c(*y, *x): x <= y
+        {
+            if (cmp(arr[z], arr[y]) >= 0) { return r; }   // y <= z: done
+            (arr[y], arr[z]) = (arr[z], arr[y]); r = 1;
+            if (cmp(arr[y], arr[x]) < 0) { (arr[x], arr[y]) = (arr[y], arr[x]); r = 2; }
+            return r;
+        }
+        if (cmp(arr[z], arr[y]) < 0)    // x > y, y > z
+        {
+            (arr[x], arr[z]) = (arr[z], arr[x]); r = 1; return r;
+        }
+        // x > y, y <= z
+        (arr[x], arr[y]) = (arr[y], arr[x]); r = 1;
+        if (cmp(arr[z], arr[y]) < 0) { (arr[y], arr[z]) = (arr[z], arr[y]); r = 2; }
+        return r;
+    }
+
+    /// <summary>Selection sort for small ranges — port of LLVM selection_sort.</summary>
+    private static void NthSelectionSort(int[] arr, int first, int last, Comparison<int> cmp)
+    {
+        for (int i = first; i < last - 1; i++)
+        {
+            int minIdx = i;
+            for (int k = i + 1; k < last; k++)
+            {
+                if (cmp(arr[k], arr[minIdx]) < 0) { minIdx = k; }
+            }
+            if (minIdx != i) { (arr[i], arr[minIdx]) = (arr[minIdx], arr[i]); }
+        }
     }
 
     private List<Edge> InsertVertex_FlipFixedEdges(int iV)
@@ -529,15 +695,13 @@ public sealed partial class Triangulation<T>
     private int WalkTriangles(int startVertex, V2d<T> pos)
     {
         int currTri = _vertTris[startVertex];
-        ulong prngState = 12345678901234567UL; // deterministic seed
-        // Upper bound prevents infinite loops on degenerate input.
-        // Typical walk is O(sqrt(n)); 1_000_000 is a safe hard cap.
+        // SplitMix64 with state=0, fresh per call — matches C++ detail::SplitMix64RandGen.
+        ulong prngState = 0UL;
         for (int guard = 0; guard < 1_000_000; guard++)
         {
             var t = Triangles[currTri];
-            bool moved = false;
-            // Stochastic offset to reduce worst-case walk on regular grids
-            int offset = (int)(NextPrng(ref prngState) % 3);
+            bool found = true;
+            int offset = (int)(SplitMix64(ref prngState) % 3UL);
             for (int i = 0; i < 3; i++)
             {
                 int idx = (i + offset) % 3;
@@ -548,28 +712,28 @@ public sealed partial class Triangulation<T>
                 if (loc == PtLineLocation.Right && iN != Indices.NoNeighbor)
                 {
                     currTri = iN;
-                    moved = true;
+                    found = false;
                     break;
                 }
             }
-
-            if (!moved)
-            {
-                return currTri;
-            }
+            if (found) { return currTri; }
         }
-
-        // Walk did not converge (very degenerate triangulation) — let the caller fall back.
+        // Walk did not converge (very degenerate triangulation) — let caller fall back.
         return currTri;
     }
 
+    /// <summary>
+    /// SplitMix64 PRNG — direct port of C++ <c>detail::SplitMix64RandGen::operator()</c>.
+    /// Initial state 0 and a fresh instance per <see cref="WalkTriangles"/> call
+    /// matches C++ behavior exactly.
+    /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static ulong NextPrng(ref ulong state)
+    private static ulong SplitMix64(ref ulong state)
     {
-        state ^= state << 13;
-        state ^= state >> 7;
-        state ^= state << 17;
-        return state;
+        ulong z = (state += 0x9e3779b97f4a7c15UL);
+        z = (z ^ (z >> 30)) * 0xbf58476d1ce4e5b9UL;
+        z = (z ^ (z >> 27)) * 0x94d049bb133111ebUL;
+        return z ^ (z >> 31);
     }
 
     // -------------------------------------------------------------------------

@@ -158,102 +158,6 @@ public static class TriangulationTopo
 }
 
 // ---------------------------------------------------------------------------
-// Expected-file parser
-// ---------------------------------------------------------------------------
-
-/// <summary>
-/// Parsed semantic properties from a CDT ground-truth expected file.
-/// The C++ and C# implementations may produce different but equally-valid
-/// Delaunay triangulations (due to different insertion ordering and
-/// tie-breaking for degenerate co-circular configurations). Therefore we
-/// compare only the properties that must be identical regardless of which
-/// valid CDT is chosen:
-/// <list type="bullet">
-///   <item>Triangle count</item>
-///   <item>Fixed (constraint) edge set</item>
-///   <item>Overlap-count map</item>
-///   <item>Piece-to-originals map</item>
-/// </list>
-/// The actual triangle vertex/neighbor data is NOT compared because it is
-/// not uniquely determined for degenerate inputs or different insertion orders.
-/// </summary>
-internal sealed class ExpectedGroundTruth
-{
-    public int TriangleCount { get; init; }
-    public HashSet<Edge> FixedEdges { get; init; } = new();
-    public Dictionary<Edge, ushort> OverlapCount { get; init; } = new();
-    public Dictionary<Edge, List<Edge>> PieceToOriginals { get; init; } = new();
-
-    /// <summary>Parses a CDT expected topology file.</summary>
-    public static ExpectedGroundTruth Parse(string path)
-    {
-        var lines = File.ReadAllLines(path)
-            .Select(l => l.Trim())
-            .ToArray();
-
-        int idx = 0;
-
-        // Section 1: triangles
-        int triCount = int.Parse(lines[idx++]);
-        for (int i = 0; i < triCount; i++)
-        {
-            idx++; // skip triangle data line
-        }
-
-        var result = new ExpectedGroundTruth { TriangleCount = triCount };
-
-        // Section 2: fixed edges  (preceded by blank line)
-        SkipBlank(lines, ref idx);
-        int feCount = int.Parse(lines[idx++]);
-        for (int i = 0; i < feCount; i++)
-        {
-            var parts = SplitLine(lines[idx++]);
-            result.FixedEdges.Add(new Edge(int.Parse(parts[0]), int.Parse(parts[1])));
-        }
-
-        // Section 3: overlap counts  (preceded by blank line)
-        SkipBlank(lines, ref idx);
-        int ovCount = int.Parse(lines[idx++]);
-        for (int i = 0; i < ovCount; i++)
-        {
-            var parts = SplitLine(lines[idx++]);
-            var e = new Edge(int.Parse(parts[0]), int.Parse(parts[1]));
-            result.OverlapCount[e] = ushort.Parse(parts[2]);
-        }
-
-        // Section 4: piece-to-originals  (preceded by blank line)
-        SkipBlank(lines, ref idx);
-        int pieceCount = int.Parse(lines[idx++]);
-        for (int i = 0; i < pieceCount; i++)
-        {
-            var keyParts = SplitLine(lines[idx++]);
-            var key = new Edge(int.Parse(keyParts[0]), int.Parse(keyParts[1]));
-            int subCount = int.Parse(SplitLine(lines[idx++])[0]);
-            var subs = new List<Edge>(subCount);
-            for (int j = 0; j < subCount; j++)
-            {
-                var sp = SplitLine(lines[idx++]);
-                subs.Add(new Edge(int.Parse(sp[0]), int.Parse(sp[1])));
-            }
-            result.PieceToOriginals[key] = subs;
-        }
-
-        return result;
-    }
-
-    private static void SkipBlank(string[] lines, ref int idx)
-    {
-        while (idx < lines.Length && lines[idx].Length == 0)
-        {
-            idx++;
-        }
-    }
-
-    private static string[] SplitLine(string line) =>
-        line.Split(new[] { ' ', '\t' }, StringSplitOptions.RemoveEmptyEntries);
-}
-
-// ---------------------------------------------------------------------------
 // Helpers shared by all ground-truth test classes
 // ---------------------------------------------------------------------------
 
@@ -265,62 +169,18 @@ internal static class GroundTruthHelpers
     public static string ExpectedPath(string fileName) =>
         Path.Combine(AppContext.BaseDirectory, "expected", fileName);
 
-    /// <summary>
-    /// Asserts that <paramref name="cdt"/> matches the semantic properties
-    /// recorded in <paramref name="expectedFile"/>.
-    ///
-    /// We compare triangle count, fixed edges, overlap counts, and
-    /// piece-to-originals — but NOT the specific triangle topology, because
-    /// the C++ and C# CDT implementations may produce different (yet equally
-    /// valid) Delaunay triangulations for the same input when insertion order
-    /// or degenerate co-circular cases create multiple valid solutions.
-    ///
-    /// For conforming DT, pass <paramref name="checkTriangleCount"/>=<c>false</c>
-    /// because the number of Steiner points inserted is not uniquely determined
-    /// (different valid base Delaunay triangulations require different amounts of
-    /// edge refinement), so triangle counts can legitimately differ.
-    /// </summary>
     public static void AssertTopologyMatchesFile<T>(
-        Triangulation<T> cdt, string expectedFile, bool checkTriangleCount = true)
+        Triangulation<T> cdt, string expectedFile)
         where T : unmanaged, IFloatingPoint<T>, IMinMaxValue<T>, IRootFunctions<T>
     {
-        var expected = ExpectedGroundTruth.Parse(expectedFile);
-
-        // 1. Triangle count (skipped for conforming DT — Steiner-point count is not unique)
-        if (checkTriangleCount)
-        {
-            Assert.Equal(expected.TriangleCount, cdt.Triangles.Count);
-        }
-
-        // 2. Fixed edges (exact same set)
-        Assert.Equal(expected.FixedEdges.Count, cdt.FixedEdges.Count);
-        foreach (var e in expected.FixedEdges)
-        {
-            Assert.Contains(e, cdt.FixedEdges);
-        }
-
-        // 3. Overlap counts (exact same map)
-        Assert.Equal(expected.OverlapCount.Count, cdt.OverlapCount.Count);
-        foreach (var (e, ov) in expected.OverlapCount)
-        {
-            Assert.True(cdt.OverlapCount.TryGetValue(e, out ushort actual),
-                $"OverlapCount missing edge ({e.V1},{e.V2})");
-            Assert.Equal(ov, actual);
-        }
-
-        // 4. Piece-to-originals (exact same map)
-        Assert.Equal(expected.PieceToOriginals.Count, cdt.PieceToOriginals.Count);
-        foreach (var (e, originals) in expected.PieceToOriginals)
-        {
-            Assert.True(cdt.PieceToOriginals.TryGetValue(e, out var actualOriginals),
-                $"PieceToOriginals missing edge ({e.V1},{e.V2})");
-            Assert.Equal(originals.Count, actualOriginals!.Count);
-            foreach (var orig in originals)
-            {
-                Assert.Contains(orig, actualOriginals);
-            }
-        }
+        string actual = TriangulationTopo.ToString(cdt);
+        string expected = NormaliseNewlines(File.ReadAllText(expectedFile));
+        actual = NormaliseNewlines(actual);
+        Assert.Equal(expected, actual);
     }
+
+    private static string NormaliseNewlines(string s) =>
+        s.Replace("\r\n", "\n").TrimEnd('\n') + "\n";
 
     public static VertexInsertionOrder ParseOrder(string s) =>
         s == "auto" ? VertexInsertionOrder.Auto : VertexInsertionOrder.AsProvided;
@@ -504,11 +364,7 @@ public abstract class ConformingTriangulationGroundTruthTestsBase<T>
         cdt.EraseOuterTrianglesAndHoles();
 
         Assert.True(TopologyVerifier.VerifyTopology(cdt));
-        // Conforming DT may insert different Steiner points depending on which
-        // Delaunay edges already exist. C++ uses SplitMix64 (state=0), C# uses
-        // XorShift64, producing different (valid) base CDTs, so the Steiner
-        // point count — and therefore triangle count — is not compared.
-        GroundTruthHelpers.AssertTopologyMatchesFile(cdt, expectedPath, checkTriangleCount: false);
+        GroundTruthHelpers.AssertTopologyMatchesFile(cdt, expectedPath);
     }
 }
 
@@ -579,9 +435,8 @@ public abstract class CrossingEdgesGroundTruthTestsBase<T>
         cdt.ConformToEdges(edges);
 
         Assert.True(TopologyVerifier.VerifyTopology(cdt));
-        // Conforming: triangle count may differ due to C++ SplitMix64 vs C# XorShift64 PRNG.
         GroundTruthHelpers.AssertTopologyMatchesFile(
-            cdt, GroundTruthHelpers.ExpectedPath(expectedFile), checkTriangleCount: false);
+            cdt, GroundTruthHelpers.ExpectedPath(expectedFile));
     }
 }
 
