@@ -116,7 +116,7 @@
                 <TextBlock x:Name="StatusText">Load a file or generate random points.</TextBlock>
             </StatusBarItem>
             <StatusBarItem HorizontalAlignment="Right">
-                <TextBlock x:Name="CoordText"/>
+                <TextBlock x:Name="CoordLabel"/>
             </StatusBarItem>
         </StatusBar>
 

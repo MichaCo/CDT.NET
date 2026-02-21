@@ -8,7 +8,6 @@
     <Nullable>enable</Nullable>
     <RootNamespace>CDT.Viz</RootNamespace>
     <AssemblyName>CDT.Viz</AssemblyName>
-    <ApplicationIcon>Resources\cdt.ico</ApplicationIcon>
     <StartupObject>CDT.Viz.App</StartupObject>
   </PropertyGroup>
 
@@ -18,7 +17,10 @@
 
   <ItemGroup>
     <Resource Include="Resources\cdt.ico" Condition="Exists('Resources\cdt.ico')" />
-    <Content Include="inputs\*.txt" CopyToOutputDirectory="PreserveNewest" />
+    <!-- Copy test input files so the file list is populated at runtime -->
+    <Content Include="..\..\test\CDT.Tests\inputs\*.txt"
+             CopyToOutputDirectory="PreserveNewest"
+             Link="inputs\%(Filename)%(Extension)" />
   </ItemGroup>
 
 </Project>
