@@ -488,21 +488,20 @@ public sealed partial class Triangulation<T>
     {
         var v = Vertices[iVert];
         int iT = WalkTriangles(startVertex, v);
-
         var t = Triangles[iT];
-        var v1 = Vertices[t.V0];
-        var v2 = Vertices[t.V1];
-        var v3 = Vertices[t.V2];
 
-        var loc = LocatePointTriangle(v, v1, v2, v3);
+        var loc = LocatePointTriangle(v, Vertices[t.V0], Vertices[t.V1], Vertices[t.V2]);
 
         if (loc == PtTriLocation.Outside)
-            throw new TriangulationException("No triangle found at position.");
+        {
+            // Walk hit a degenerate cycle; fall back to brute-force linear scan
+            iT = FindTriangleLinear(v, out loc);
+            t = Triangles[iT];
+        }
 
         if (loc == PtTriLocation.OnVertex)
         {
-            // Find which super-triangle-offset vertex is the duplicate
-            int iDupe = v1 == v ? t.V0 : v2 == v ? t.V1 : t.V2;
+            int iDupe = Vertices[t.V0] == v ? t.V0 : Vertices[t.V1] == v ? t.V1 : t.V2;
             throw new DuplicateVertexException(iVert - _nTargetVerts, iDupe - _nTargetVerts);
         }
 
@@ -512,29 +511,32 @@ public sealed partial class Triangulation<T>
         return (iT, iNeigh);
     }
 
+    /// <summary>Brute-force O(n) fallback: scan all triangles to find the one containing <paramref name="pos"/>.</summary>
+    private int FindTriangleLinear(V2d<T> pos, out PtTriLocation loc)
+    {
+        for (int i = 0; i < Triangles.Count; i++)
+        {
+            var t = Triangles[i];
+            loc = LocatePointTriangle(pos, Vertices[t.V0], Vertices[t.V1], Vertices[t.V2]);
+            if (loc != PtTriLocation.Outside)
+            {
+                return i;
+            }
+        }
+        throw new TriangulationException($"No triangle found for point ({pos.X}, {pos.Y}).");
+    }
+
     private int WalkTriangles(int startVertex, V2d<T> pos)
     {
         int currTri = _vertTris[startVertex];
-        ulong prngState = 12345678901234567UL; // simple PRNG seed
-        int _dbgWalkIter = 0;
-        var _dbgVisited = new System.Collections.Generic.Dictionary<(int, ulong), int>();
-        while (true)
+        ulong prngState = 12345678901234567UL; // deterministic seed
+        // Upper bound prevents infinite loops on degenerate input.
+        // Typical walk is O(sqrt(n)); 1_000_000 is a safe hard cap.
+        for (int guard = 0; guard < 1_000_000; guard++)
         {
-            if (++_dbgWalkIter > 200)
-            {
-                var sb = new System.Text.StringBuilder();
-                sb.Append($"WalkTriangles hang at tri={currTri}, pos=({pos.X},{pos.Y})\n");
-                sb.Append($"startVertex={startVertex}, _vertTris[start]={_vertTris[startVertex]}\n");
-                throw new InvalidOperationException(sb.ToString());
-            }
-            var _key = (currTri, prngState);
-            if (_dbgVisited.TryGetValue(_key, out int _prevStep))
-                throw new InvalidOperationException($"WalkTriangles CYCLE at tri={currTri} step={_dbgWalkIter} (was step {_prevStep}), pos=({pos.X},{pos.Y})");
-            _dbgVisited[_key] = _dbgWalkIter;
-
             var t = Triangles[currTri];
             bool moved = false;
-            // Stochastic offset to avoid worst-case walk
+            // Stochastic offset to reduce worst-case walk on regular grids
             int offset = (int)(NextPrng(ref prngState) % 3);
             for (int i = 0; i < 3; i++)
             {
@@ -550,8 +552,15 @@ public sealed partial class Triangulation<T>
                     break;
                 }
             }
-            if (!moved) return currTri;
+
+            if (!moved)
+            {
+                return currTri;
+            }
         }
+
+        // Walk did not converge (very degenerate triangulation) — let the caller fall back.
+        return currTri;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
