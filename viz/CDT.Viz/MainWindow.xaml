@@ -1,0 +1,132 @@
+<Window x:Class="CDT.Viz.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="CDT.NET Visualizer" Height="720" Width="1200"
+        Background="#F0F0F0">
+    <Window.Resources>
+        <Style x:Key="GroupHeader" TargetType="TextBlock">
+            <Setter Property="FontWeight" Value="Bold"/>
+            <Setter Property="Margin" Value="0,6,0,2"/>
+        </Style>
+    </Window.Resources>
+    <DockPanel>
+        <!-- Top toolbar -->
+        <ToolBar DockPanel.Dock="Top">
+            <Button Click="LoadFile_Click" ToolTip="Load input file">📂 Load File…</Button>
+            <Separator/>
+            <Button Click="GenerateRandom_Click" ToolTip="Generate random points">🎲 Random</Button>
+            <Label>Count:</Label>
+            <TextBox x:Name="RandomCount" Width="50" Text="100" VerticalContentAlignment="Center"/>
+            <Separator/>
+            <Button Click="SavePng_Click">💾 Save PNG</Button>
+            <Button Click="SaveOff_Click">💾 Save OFF</Button>
+            <Separator/>
+            <Button Click="ResetView_Click">⟳ Reset View</Button>
+        </ToolBar>
+
+        <!-- Left panel: file list + options -->
+        <Border DockPanel.Dock="Left" Width="230" Background="White"
+                BorderBrush="#CCCCCC" BorderThickness="0,0,1,0">
+            <ScrollViewer VerticalScrollBarVisibility="Auto">
+                <StackPanel Margin="8">
+                    <!-- Built-in inputs -->
+                    <TextBlock Style="{StaticResource GroupHeader}">Input Files</TextBlock>
+                    <ListBox x:Name="FileList" Height="160"
+                             SelectionChanged="FileList_SelectionChanged"
+                             ScrollViewer.HorizontalScrollBarVisibility="Hidden"/>
+
+                    <!-- Triangulation type -->
+                    <TextBlock Style="{StaticResource GroupHeader}">Triangulation</TextBlock>
+                    <ComboBox x:Name="TriangulationType"
+                              SelectionChanged="Option_Changed">
+                        <ComboBoxItem IsSelected="True">Constrained Delaunay</ComboBoxItem>
+                        <ComboBoxItem>Conforming Delaunay</ComboBoxItem>
+                    </ComboBox>
+
+                    <!-- Insertion order -->
+                    <TextBlock Style="{StaticResource GroupHeader}">Vertex Order</TextBlock>
+                    <ComboBox x:Name="InsertionOrder"
+                              SelectionChanged="Option_Changed">
+                        <ComboBoxItem IsSelected="True">Auto</ComboBoxItem>
+                        <ComboBoxItem>As Provided</ComboBoxItem>
+                    </ComboBox>
+
+                    <!-- Intersecting edges -->
+                    <TextBlock Style="{StaticResource GroupHeader}">Intersecting Edges</TextBlock>
+                    <ComboBox x:Name="IntersectingEdges"
+                              SelectionChanged="Option_Changed">
+                        <ComboBoxItem IsSelected="True">Try Resolve</ComboBoxItem>
+                        <ComboBoxItem>Not Allowed</ComboBoxItem>
+                    </ComboBox>
+
+                    <!-- Finalize -->
+                    <TextBlock Style="{StaticResource GroupHeader}">Finalize</TextBlock>
+                    <ComboBox x:Name="FinalizeMode"
+                              SelectionChanged="Option_Changed">
+                        <ComboBoxItem IsSelected="True">Don't Finalize</ComboBoxItem>
+                        <ComboBoxItem>Erase Super-Triangle</ComboBoxItem>
+                        <ComboBoxItem>Erase Outer Triangles</ComboBoxItem>
+                        <ComboBoxItem>Erase Outer + Holes</ComboBoxItem>
+                    </ComboBox>
+
+                    <!-- Min dist tolerance -->
+                    <TextBlock Style="{StaticResource GroupHeader}">Min Dist to Edge</TextBlock>
+                    <TextBox x:Name="MinDist" Text="1E-06"
+                             LostFocus="MinDist_LostFocus"/>
+
+                    <!-- Point/edge limits -->
+                    <TextBlock Style="{StaticResource GroupHeader}">Vertex Limit</TextBlock>
+                    <Slider x:Name="VertexLimit" Minimum="1" Maximum="9999999"
+                            Value="9999999" TickFrequency="1" IsSnapToTickEnabled="True"
+                            ValueChanged="Limit_Changed"/>
+                    <TextBlock x:Name="VertexLimitLabel" Text="All"/>
+
+                    <TextBlock Style="{StaticResource GroupHeader}">Edge Limit</TextBlock>
+                    <Slider x:Name="EdgeLimit" Minimum="0" Maximum="9999999"
+                            Value="9999999" TickFrequency="1" IsSnapToTickEnabled="True"
+                            ValueChanged="Limit_Changed"/>
+                    <TextBlock x:Name="EdgeLimitLabel" Text="All"/>
+
+                    <!-- Display toggles -->
+                    <TextBlock Style="{StaticResource GroupHeader}">Display</TextBlock>
+                    <CheckBox x:Name="ShowPoints" IsChecked="True"
+                              Checked="Display_Changed" Unchecked="Display_Changed">
+                        Show Points
+                    </CheckBox>
+                    <CheckBox x:Name="ShowIndices"
+                              Checked="Display_Changed" Unchecked="Display_Changed">
+                        Show Indices
+                    </CheckBox>
+                    <CheckBox x:Name="FixDuplicates" IsChecked="True"
+                              Checked="Option_ChangedCb" Unchecked="Option_ChangedCb">
+                        Fix Duplicates
+                    </CheckBox>
+
+                    <!-- Stats -->
+                    <TextBlock Style="{StaticResource GroupHeader}">Statistics</TextBlock>
+                    <TextBlock x:Name="StatsLabel" TextWrapping="Wrap"
+                               Foreground="DimGray" FontSize="11">—</TextBlock>
+                </StackPanel>
+            </ScrollViewer>
+        </Border>
+
+        <!-- Status bar -->
+        <StatusBar DockPanel.Dock="Bottom" Background="#E0E0E0">
+            <StatusBarItem>
+                <TextBlock x:Name="StatusText">Load a file or generate random points.</TextBlock>
+            </StatusBarItem>
+            <StatusBarItem HorizontalAlignment="Right">
+                <TextBlock x:Name="CoordText"/>
+            </StatusBarItem>
+        </StatusBar>
+
+        <!-- Main canvas area -->
+        <Border x:Name="CanvasBorder" Background="White" ClipToBounds="True"
+                MouseWheel="Canvas_MouseWheel"
+                MouseLeftButtonDown="Canvas_MouseLeftButtonDown"
+                MouseLeftButtonUp="Canvas_MouseLeftButtonUp"
+                MouseMove="Canvas_MouseMove">
+            <Canvas x:Name="TriCanvas"/>
+        </Border>
+    </DockPanel>
+</Window>
