@@ -437,12 +437,15 @@ public sealed partial class Triangulation<T>
             ? InsertVertexInsideTriangle(iV, iT)
             : InsertVertexOnEdge(iV, iT, iTopo, handleFixedSplitEdge: false);
 
+        int _dbgFlipIter2 = 0;
         while (stack.Count > 0)
         {
+            if (++_dbgFlipIter2 > 1_000_000) throw new InvalidOperationException($"InsertVertex_FlipFixed infinite loop, iV={iV}");
             int tri = stack.Pop();
             EdgeFlipInfo(tri, iV,
                 out int itopo, out int iv2, out int iv3, out int iv4,
                 out int n1, out int n2, out int n3, out int n4);
+
             if (itopo != Indices.NoNeighbor && IsFlipNeeded(iV, iv2, iv3, iv4))
             {
                 var flippedEdge = new Edge(iv2, iv4);
@@ -459,8 +462,11 @@ public sealed partial class Triangulation<T>
 
     private void EnsureDelaunayByEdgeFlips(int iV1, Stack<int> triStack)
     {
+        int _dbgFlipIter = 0;
         while (triStack.Count > 0)
         {
+            if (++_dbgFlipIter > 1_000_000) throw new InvalidOperationException($"EnsureDelaunayByEdgeFlips infinite loop, iV1={iV1}, stack size={triStack.Count}");
+
             int iT = triStack.Pop();
             EdgeFlipInfo(iT, iV1,
                 out int iTopo, out int iV2, out int iV3, out int iV4,
@@ -510,9 +516,22 @@ public sealed partial class Triangulation<T>
     {
         int currTri = _vertTris[startVertex];
         ulong prngState = 12345678901234567UL; // simple PRNG seed
-
+        int _dbgWalkIter = 0;
+        var _dbgVisited = new System.Collections.Generic.Dictionary<(int, ulong), int>();
         while (true)
         {
+            if (++_dbgWalkIter > 200)
+            {
+                var sb = new System.Text.StringBuilder();
+                sb.Append($"WalkTriangles hang at tri={currTri}, pos=({pos.X},{pos.Y})\n");
+                sb.Append($"startVertex={startVertex}, _vertTris[start]={_vertTris[startVertex]}\n");
+                throw new InvalidOperationException(sb.ToString());
+            }
+            var _key = (currTri, prngState);
+            if (_dbgVisited.TryGetValue(_key, out int _prevStep))
+                throw new InvalidOperationException($"WalkTriangles CYCLE at tri={currTri} step={_dbgWalkIter} (was step {_prevStep}), pos=({pos.X},{pos.Y})");
+            _dbgVisited[_key] = _dbgWalkIter;
+
             var t = Triangles[currTri];
             bool moved = false;
             // Stochastic offset to avoid worst-case walk
