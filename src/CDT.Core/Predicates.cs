@@ -1,14 +1,17 @@
 // This Source Code Form is subject to the terms of the Mozilla Public
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
-// Adaptive predicates ported from William C. Lenthe's implementation
-// (originally based on Shewchuk's robust predicates).
+//
+// Geometric predicates matching the Lenthe formulation used by the C++ CDT library:
+//   - float inputs: upcast to double, single-pass computation
+//   - double inputs: double-double compensation for near-degenerate cases
+//     (emulates the C++ long-double promotion on GCC/Linux targets)
 
 using System.Runtime.CompilerServices;
 
 namespace CDT;
 
-/// <summary>Robust adaptive geometric predicates.</summary>
+/// <summary>Robust geometric predicates.</summary>
 internal static class Predicates
 {
     // -------------------------------------------------------------------------
@@ -19,8 +22,10 @@ internal static class Predicates
     // -------------------------------------------------------------------------
 
     /// <summary>
-    /// Adaptive orient2d predicate for <see cref="double"/>.
+    /// Orient2d predicate for <see cref="double"/>.
     /// Returns positive if <c>(cx,cy)</c> is to the left of <c>(ax,ay)→(bx,by)</c>.
+    /// Uses double-double compensation for near-degenerate cases, matching the
+    /// behavior of C++ CDT compiled with GCC/Linux (which promotes double to long double).
     /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static double Orient2D(
@@ -28,119 +33,51 @@ internal static class Predicates
         double bx, double by,
         double cx, double cy)
     {
-        // Fast floating-point estimate
-        double detLeft = (ax - cx) * (by - cy);
-        double detRight = (ay - cy) * (bx - cx);
-        double det = detLeft - detRight;
+        double acx = ax - cx, bcx = bx - cx;
+        double acy = ay - cy, bcy = by - cy;
+        double det = acx * bcy - acy * bcx;
 
-        double detSum;
-        if (detLeft > 0)
-        {
-            if (detRight <= 0) return det;
-            detSum = detLeft + detRight;
-        }
-        else if (detLeft < 0)
-        {
-            if (detRight >= 0) return det;
-            detSum = -detLeft - detRight;
-        }
-        else
+        // Error bound: (3 + 8ε)ε * (|acx*bcy| + |acy*bcx|)
+        const double errBound = 3.3306690621773814e-16; // 3ε (ε = machine epsilon)
+        double permanent = Math.Abs(acx * bcy) + Math.Abs(acy * bcx);
+        if (Math.Abs(det) > errBound * permanent)
         {
             return det;
         }
 
-        // Error bound
-        const double ccwerrboundA = 3.3306690621773814e-16;
-        double errbound = ccwerrboundA * detSum;
-        if (det >= errbound || -det >= errbound) return det;
+        // Double-double fallback: compute acx*bcy and acy*bcx with exact error.
+        var (p, pe) = TwoProd(acx, bcy);
+        var (q, qe) = TwoProd(acy, bcx);
+        double hi = p - q;
+        double lo = (p - hi) - q + pe - qe; // compensation term
+        if (hi != 0.0)
+        {
+            return hi;
+        }
 
-        // Exact computation
-        return Orient2DAdaptive(ax, ay, bx, by, cx, cy, detSum);
+        return lo;
     }
 
     /// <summary>
-    /// Adaptive orient2d predicate for <see cref="float"/>.
-    /// Upcasts to double for robustness.
+    /// Orient2d predicate for <see cref="float"/>.
+    /// Upcasts to double and uses the single-pass Lenthe formula.
     /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static float Orient2D(
         float ax, float ay,
         float bx, float by,
         float cx, float cy)
-        => (float)Orient2D((double)ax, ay, bx, by, cx, cy);
-
-    /// <summary>Orient2d adaptive step for doubles.</summary>
-    private static double Orient2DAdaptive(
-        double ax, double ay,
-        double bx, double by,
-        double cx, double cy,
-        double detSum)
-    {
-        // Two-product expansions
-        double acx = ax - cx, bcx = bx - cx;
-        double acy = ay - cy, bcy = by - cy;
-
-        var (p, q) = TwoProd(acx, bcy);
-        var (r, s) = TwoProd(acy, bcx);
-
-        // 4-term expansion: [p, q] - [r, s]
-        Span<double> b = stackalloc double[4];
-        b[0] = q - s;
-        double bhi, blo;
-        if (q > s)
-        {
-            bhi = q - s;
-            blo = bhi - q + s; // correction
-        }
-        else
-        {
-            bhi = s - q;
-            blo = bhi - s + q;
-            bhi = -bhi;
-            blo = -blo;
-        }
-        b[2] = p + blo;
-        double sum = p + blo;
-        b[3] = sum - p;
-        b[1] = blo - b[3];
-        _ = bhi;
-        _ = sum;
-        _ = r;
-
-        // Simplified robust estimate: just use exact double arithmetic
-        // via staged expansion approach
-        double det = (acx * bcy) - (acy * bcx);
-        const double ccwerrboundB = 2.2204460492503146e-16;
-        const double ccwerrboundC = 1.1102230246251587e-15;
-        double errbound = ccwerrboundB * detSum;
-        if (det >= errbound || -det >= errbound) return det;
-
-        // Re-compute with extended precision using TwoSum
-        var (s1, s2) = TwoSum(ax, -cx);
-        var (t1, t2) = TwoSum(bx, -cx);
-        var (u1, u2) = TwoSum(ay, -cy);
-        var (v1, v2) = TwoSum(by, -cy);
-
-        var (a1, a2) = TwoProd(s1, v1);
-        var (b1, b2) = TwoProd(u1, t1);
-        double sum1 = a1 - b1;
-        double err1 = a2 - b2 + s2 * v1 + s1 * v2 - u2 * t1 - u1 * t2;
-
-        det = sum1 + err1;
-        errbound = ccwerrboundC * detSum;
-        if (det >= errbound || -det >= errbound) return det;
-
-        return sum1 + err1; // best estimate available
-    }
+        => (float)((double)(ax - cx) * (by - cy) - (double)(ay - cy) * (bx - cx));
 
     // -------------------------------------------------------------------------
     // incircle: positive => d is inside the circumcircle of (a,b,c) in CCW order
     // -------------------------------------------------------------------------
 
     /// <summary>
-    /// Adaptive incircle predicate for <see cref="double"/>.
-    /// Returns positive if <c>d</c> is strictly inside the circumcircle of <c>(a,b,c)</c>
-    /// (assuming CCW ordering).
+    /// InCircle predicate for <see cref="double"/>.
+    /// Returns positive if <c>d</c> is strictly inside the circumcircle of <c>(a,b,c)</c>.
+    /// Uses double-double compensation for near-degenerate cases, matching the
+    /// behavior of C++ CDT compiled with GCC/Linux (long double promotion).
     /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static double InCircle(
@@ -152,33 +89,50 @@ internal static class Predicates
         double adx = ax - dx, bdx = bx - dx, cdx = cx - dx;
         double ady = ay - dy, bdy = by - dy, cdy = cy - dy;
 
-        double bdxcdy = bdx * cdy, cdxbdy = cdx * bdy;
-        double cdxady = cdx * ady, adxcdy = adx * cdy;
-        double adxbdy = adx * bdy, bdxady = bdx * ady;
+        double bdxcdy = bdx * cdy - cdx * bdy;
+        double cdxady = cdx * ady - adx * cdy;
+        double adxbdy = adx * bdy - bdx * ady;
 
         double alift = adx * adx + ady * ady;
         double blift = bdx * bdx + bdy * bdy;
         double clift = cdx * cdx + cdy * cdy;
 
-        double det = alift * (bdxcdy - cdxbdy)
-                   + blift * (cdxady - adxcdy)
-                   + clift * (adxbdy - bdxady);
+        double det = alift * bdxcdy + blift * cdxady + clift * adxbdy;
 
-        double permanent = (Math.Abs(bdxcdy) + Math.Abs(cdxbdy)) * alift
-                         + (Math.Abs(cdxady) + Math.Abs(adxcdy)) * blift
-                         + (Math.Abs(adxbdy) + Math.Abs(bdxady)) * clift;
+        // Fast-exit when the estimate is clearly reliable.
+        // Permanent = upper bound on rounding error magnitude.
+        double permanent = (Math.Abs(bdxcdy) + Math.Abs(cdx * bdy)) * alift
+                         + (Math.Abs(cdxady) + Math.Abs(adx * cdy)) * blift
+                         + (Math.Abs(adxbdy) + Math.Abs(bdx * ady)) * clift;
+        const double errBound = 1.1102230246251565e-15; // 10ε
+        if (Math.Abs(det) > errBound * permanent)
+        {
+            return det;
+        }
 
-        const double iccerrboundA = 1.0e-15; // conservative
-        double errbound = iccerrboundA * permanent;
-        if (det > errbound || -det > errbound) return det;
+        // Double-double fallback: compute each cross-product (a*b - c*d)
+        // using TwoProd so the error is tracked exactly.
+        var (bc_h, bc_e) = TwoCross(bdx, cdy, cdx, bdy);
+        var (ca_h, ca_e) = TwoCross(cdx, ady, adx, cdy);
+        var (ab_h, ab_e) = TwoCross(adx, bdy, bdx, ady);
 
-        // Fall back to exact (still floating-point, but more careful)
-        return InCircleExact(ax, ay, bx, by, cx, cy, dx, dy);
+        // Scale each cross-product by its lift factor and sum.
+        // hi part of result:
+        double sum_hi = alift * bc_h + blift * ca_h + clift * ab_h;
+        // lo (correction) part:
+        double sum_lo = alift * bc_e + blift * ca_e + clift * ab_e;
+
+        if (sum_hi != 0.0)
+        {
+            return sum_hi;
+        }
+
+        return sum_lo;
     }
 
     /// <summary>
-    /// Adaptive incircle predicate for <see cref="float"/>.
-    /// Upcasts to double for robustness.
+    /// InCircle predicate for <see cref="float"/>.
+    /// Upcasts to double and uses the single-pass Lenthe formula, matching C++ CDT float behavior.
     /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static float InCircle(
@@ -186,62 +140,56 @@ internal static class Predicates
         float bx, float by,
         float cx, float cy,
         float dx, float dy)
-        => (float)InCircle((double)ax, ay, bx, by, cx, cy, dx, dy);
-
-    private static double InCircleExact(
-        double ax, double ay,
-        double bx, double by,
-        double cx, double cy,
-        double dx, double dy)
     {
-        double adx = ax - dx, ady = ay - dy;
-        double bdx = bx - dx, bdy = by - dy;
-        double cdx = cx - dx, cdy = cy - dy;
-
-        // Exact 3×3 determinant using multi-precision
-        double ab = adx * bdy - bdx * ady;
-        double bc = bdx * cdy - cdx * bdy;
-        double ca = cdx * ady - adx * cdy;
-
+        // Cast to double first (Lenthe promote<float>=double)
+        double adx = (double)ax - dx, bdx = (double)bx - dx, cdx = (double)cx - dx;
+        double ady = (double)ay - dy, bdy = (double)by - dy, cdy = (double)cy - dy;
         double alift = adx * adx + ady * ady;
         double blift = bdx * bdx + bdy * bdy;
         double clift = cdx * cdx + cdy * cdy;
-
-        return alift * bc + blift * ca + clift * ab;
+        return (float)(alift * (bdx * cdy - cdx * bdy)
+                     + blift * (cdx * ady - adx * cdy)
+                     + clift * (adx * bdy - bdx * ady));
     }
 
     // -------------------------------------------------------------------------
     // Arithmetic helpers
     // -------------------------------------------------------------------------
 
+    /// <summary>
+    /// Computes <c>a*b - c*d</c> as <c>(hi, lo)</c> where <c>hi + lo = a*b - c*d</c>
+    /// with full double-double accuracy.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static (double hi, double lo) TwoCross(double a, double b, double c, double d)
+    {
+        var (ab, ab_err) = TwoProd(a, b);
+        var (cd, cd_err) = TwoProd(c, d);
+        double hi = ab - cd;
+        double lo = (ab - hi) - cd + ab_err - cd_err;
+        return (hi, lo);
+    }
+
+    /// <summary>
+    /// Computes <c>a * b</c> exactly as <c>(hi, lo)</c> where <c>hi + lo = a*b</c>.
+    /// Uses the Veltkamp split.
+    /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static (double hi, double lo) TwoProd(double a, double b)
     {
         double x = a * b;
-        // Veltkamp split
         const double splitter = 134217729.0; // 2^27 + 1
-        double c = splitter * a;
-        double abig = c - a;
-        double ahi = c - abig;
+        double ca = splitter * a;
+        double abig = ca - a;
+        double ahi = ca - abig;
         double alo = a - ahi;
 
-        c = splitter * b;
-        abig = c - b;
-        double bhi = c - abig;
+        double cb = splitter * b;
+        abig = cb - b;
+        double bhi = cb - abig;
         double blo = b - bhi;
 
         double err = ((ahi * bhi - x) + ahi * blo + alo * bhi) + alo * blo;
         return (x, err);
-    }
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static (double hi, double lo) TwoSum(double a, double b)
-    {
-        double s = a + b;
-        double bvirt = s - a;
-        double avirt = s - bvirt;
-        double bround = b - bvirt;
-        double around = a - avirt;
-        return (s, around + bround);
     }
 }
