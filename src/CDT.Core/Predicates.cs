@@ -223,6 +223,8 @@ internal static class Predicates
         }
 
         double errC = IccBoundCD * permanent + ResultErrBound * Math.Abs(det);
+        // Stage C correction — direct port of Lenthe predicates.h (Stage C terms).
+        // Each group is: lift * (cross-product tails) + cross-product * (lift tails)*2
         det += ((adx * adx + ady * ady) * ((bdx * cdytail + cdy * bdxtail) - (bdy * cdxtail + cdx * bdytail))
               + (bdx * cdy - bdy * cdx) * (adx * adxtail + ady * adytail) * 2.0)
              + ((bdx * bdx + bdy * bdy) * ((cdx * adytail + ady * cdxtail) - (cdy * adxtail + adx * cdytail))
@@ -508,7 +510,9 @@ internal static class Predicates
 
         int total = elen + flen;
 
-        // Merge sorted by |value| into temporary buffer
+        // Merge sorted by |value| into temporary buffer.
+        // Maximum merged size for InCircle Stage D is 192+192=384 ≤ 400, so
+        // the stackalloc path is always taken for that call site.
         Span<double> merged = total <= 400 ? stackalloc double[400] : new double[total];
         int ei = 0, fi = 0, mi = 0;
         while (ei < elen && fi < flen)
