@@ -7,8 +7,10 @@
 //
 // Key design rules matching the C++ template:
 //   - float inputs: ALL intermediate differences and products computed in float
-//     first (no premature promotion). Fallback uses double for exact sign.
-//   - double inputs: fast double estimate; double-double compensation fallback.
+//     first (no premature promotion). Fallback uses decimal exact expansion sign.
+//   - double inputs: full 3-stage adaptive predicates using Shewchuk/Lenthe
+//     floating-point expansion arithmetic (all in native double).
+//     Matches C++ artem-ogre/CDT predicates.h exactly on any IEEE 754 platform.
 
 using System.Runtime.CompilerServices;
 
@@ -18,105 +20,110 @@ namespace CDT;
 internal static class Predicates
 {
     // -------------------------------------------------------------------------
-    // Float-specific Shewchuk error-bound constants
-    //   eps_f = 2^-24  (Shewchuk epsilon for float, = exp2(-digits) = exp2(-24))
+    // Error-bound constants (double: eps = 2^-53, float: eps = 2^-24)
     // -------------------------------------------------------------------------
-    private const float EpsF = 5.960464477539063e-8f;           // 2^-24
-
-    /// <summary>ccwerrboundA for float = (3 + 16·ε)·ε.</summary>
+    private const double CcwBoundAD = 3.3306690621773814e-16;
+    private const double CcwBoundBD = 2.2204460492503131e-16;
+    private const double CcwBoundCD = 1.1093356479670487e-31;
+    private const double IccBoundAD = 1.1102230246251565e-15;
+    private const double IccBoundBD = 4.440892098500626e-15;
+    private const double IccBoundCD = 5.423306525521214e-31;
+    private const double ResultErrBound = 3.3306690738754716e-16;
     private const float CcwBoundAF = 1.7881393432617188e-7f;
-
-    /// <summary>iccerrboundA for float = (10 + 96·ε)·ε.</summary>
     private const float IccBoundAF = 5.960464477539063e-7f;
+    private const double SplitterD = 134217729.0; // 2^27 + 1
 
-    // -------------------------------------------------------------------------
-    // orient2d: sign of the 2×2 determinant
-    //   | ax-cx  ay-cy |
-    //   | bx-cx  by-cy |
-    // Positive => c is to the left of a→b
-    // -------------------------------------------------------------------------
+    // =========================================================================
+    // Orient2D
+    // =========================================================================
 
     /// <summary>
-    /// Maximum absolute value of a difference coordinate for the Orient2D decimal exact fallback.
-    /// acx·bcy product &lt; (Δ)² ≤ 7.9e28 ⟺ Δ &lt; ~2.8e14; use 1e13 for safety.
-    /// </summary>
-    private const double Orient2DDecimalThreshold = 1e13;
-
-    /// <summary>
-    /// Orient2d predicate for <see cref="double"/>.
-    /// Three-level fallback matching C++ <c>predicates::adaptive/expand::orient2d&lt;double&gt;</c>:
-    /// 1) Fast double estimate with error-bound check.
-    /// 2) Double-double exact round-off.
-    /// 3) Exact <see cref="decimal"/> arithmetic when inputs are small enough.
+    /// Adaptive orient2d for <see cref="double"/>. Matches C++
+    /// <c>predicates::adaptive::orient2d&lt;double&gt;</c> exactly.
     /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static double Orient2D(
-        double ax, double ay,
-        double bx, double by,
-        double cx, double cy)
+        double ax, double ay, double bx, double by, double cx, double cy)
     {
         double acx = ax - cx, bcx = bx - cx;
         double acy = ay - cy, bcy = by - cy;
-        double det = acx * bcy - acy * bcx;
+        double detleft = acx * bcy;
+        double detright = acy * bcx;
+        double det = detleft - detright;
 
-        // ccwerrboundA for double = (3 + 16·ε)·ε ≈ 3·ε
-        const double errBound = 3.3306690621773814e-16;
-        double permanent = Math.Abs(acx * bcy) + Math.Abs(acy * bcx);
-        if (Math.Abs(det) > errBound * permanent)
+        if ((detleft < 0.0) != (detright < 0.0))
         {
             return det;
         }
 
-        // Exact decimal fallback when inputs are small enough.
-        if (Math.Abs(acx) < Orient2DDecimalThreshold
-            && Math.Abs(acy) < Orient2DDecimalThreshold
-            && Math.Abs(bcx) < Orient2DDecimalThreshold
-            && Math.Abs(bcy) < Orient2DDecimalThreshold)
+        if (detleft == 0.0 || detright == 0.0)
         {
-            decimal mdet = (decimal)acx * (decimal)bcy - (decimal)acy * (decimal)bcx;
-            if (mdet > 0m)
-            {
-                return double.Epsilon;
-            }
-
-            if (mdet < 0m)
-            {
-                return -double.Epsilon;
-            }
-
-            return 0.0;
+            return det;
         }
 
-        // Double-double fallback for larger inputs.
-        var (p, pe) = TwoProd(acx, bcy);
-        var (q, qe) = TwoProd(acy, bcx);
-        double hi = p - q;
-        double lo = (p - hi) - q + pe - qe;
-        return hi != 0.0 ? hi : lo;
+        double detsum = Math.Abs(detleft + detright);
+        if (Math.Abs(det) >= CcwBoundAD * detsum)
+        {
+            return det;
+        }
+
+        // Stage B
+        Span<double> b = stackalloc double[4];
+        int bLen = TwoTwoDiff(acx, bcy, acy, bcx, b);
+        det = Estimate(b, bLen);
+        if (Math.Abs(det) >= CcwBoundBD * detsum)
+        {
+            return det;
+        }
+
+        // Stage C
+        double acxtail = MinusTail(ax, cx, acx);
+        double bcxtail = MinusTail(bx, cx, bcx);
+        double acytail = MinusTail(ay, cy, acy);
+        double bcytail = MinusTail(by, cy, bcy);
+
+        if (acxtail == 0.0 && bcxtail == 0.0 && acytail == 0.0 && bcytail == 0.0)
+        {
+            return det;
+        }
+
+        double errC = CcwBoundCD * detsum + ResultErrBound * Math.Abs(det);
+        det += (acx * bcytail + bcy * acxtail) - (acy * bcxtail + bcx * acytail);
+        if (Math.Abs(det) >= errC)
+        {
+            return det;
+        }
+
+        // Stage D: exact expansion
+        Span<double> s1 = stackalloc double[4];
+        Span<double> s2 = stackalloc double[4];
+        Span<double> s3 = stackalloc double[4];
+        int s1Len = TwoTwoDiff(acxtail, bcy, acytail, bcx, s1);
+        int s2Len = TwoTwoDiff(acx, bcytail, acy, bcxtail, s2);
+        int s3Len = TwoTwoDiff(acxtail, bcytail, acytail, bcxtail, s3);
+        Span<double> t1 = stackalloc double[8];
+        int t1Len = ExpansionSum(b, bLen, s1, s1Len, t1);
+        Span<double> t2 = stackalloc double[12];
+        int t2Len = ExpansionSum(t1, t1Len, s2, s2Len, t2);
+        Span<double> d = stackalloc double[16];
+        int dLen = ExpansionSum(t2, t2Len, s3, s3Len, d);
+        return MostSignificant(d, dLen);
     }
 
     /// <summary>
-    /// Orient2d predicate for <see cref="float"/>.
-    /// All intermediate values computed in <b>float</b> precision (matching C++
-    /// <c>predicates::adaptive::orient2d&lt;float&gt;</c>). Falls back to an exact
-    /// double computation when the fast estimate is unreliable.
+    /// Adaptive orient2d for <see cref="float"/>. All fast-path arithmetic in float.
+    /// Falls back to exact double computation (matching C++).
     /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static float Orient2D(
-        float ax, float ay,
-        float bx, float by,
-        float cx, float cy)
+        float ax, float ay, float bx, float by, float cx, float cy)
     {
-        // Fast path: all float arithmetic — identical to C++ fast path.
-        float acx = ax - cx;
-        float bcx = bx - cx;
-        float acy = ay - cy;
-        float bcy = by - cy;
+        float acx = ax - cx, bcx = bx - cx;
+        float acy = ay - cy, bcy = by - cy;
         float detleft = acx * bcy;
         float detright = acy * bcx;
         float det = detleft - detright;
 
-        // Different signs → result is exact.
         if ((detleft < 0f) != (detright < 0f))
         {
             return det;
@@ -133,152 +140,194 @@ internal static class Predicates
             return det;
         }
 
-        // Exact fallback: each product of two 24-bit floats fits exactly in 53-bit double,
-        // so the difference of two such products (≤ 49 bits) is also exact in double.
-        // Use float-computed acx/acy/bcx/bcy (NOT re-promoted from ax/cx) to stay consistent
-        // with the C++ expansion which uses the float-rounded differences.
+        // Exact: each product of two 24-bit floats is exact in 53-bit double.
         double exact = (double)acx * bcy - (double)acy * bcx;
         return (float)exact;
     }
 
-    // -------------------------------------------------------------------------
-    // incircle: positive => d is inside the circumcircle of (a,b,c) in CCW order
-    // -------------------------------------------------------------------------
+    // =========================================================================
+    // InCircle
+    // =========================================================================
 
     /// <summary>
-    /// Maximum absolute value of a difference coordinate beyond which the decimal
-    /// exact fallback would overflow <see cref="decimal.MaxValue"/> (~7.9e28).
-    /// alift·bdxcdy ≤ 2·(Δ)²·2·(Δ)² = 4·(Δ)⁴; 3 terms ≤ 12·(Δ)⁴ &lt; 7.9e28 ⟺ Δ &lt; ~2.1e7.
-    /// We use 1e6 for a comfortable safety margin.
-    /// </summary>
-    private const double InCircleDecimalThreshold = 1e6;
-
-    /// <summary>
-    /// InCircle predicate for <see cref="double"/>.
-    /// Three-level fallback:
-    /// 1) Fast double estimate with Shewchuk error-bound check.
-    /// 2) Double-double compensation (catches most near-degenerate cases).
-    /// 3) Exact <see cref="decimal"/> arithmetic for inputs small enough to avoid overflow,
-    ///    matching C++ <c>predicates::expand::incircle&lt;double&gt;</c> (Shewchuk exact).
+    /// Adaptive incircle for <see cref="double"/>. Matches C++
+    /// <c>predicates::adaptive::incircle&lt;double&gt;</c> exactly.
     /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static double InCircle(
-        double ax, double ay,
-        double bx, double by,
-        double cx, double cy,
-        double dx, double dy)
+        double ax, double ay, double bx, double by,
+        double cx, double cy, double dx, double dy)
     {
         double adx = ax - dx, bdx = bx - dx, cdx = cx - dx;
         double ady = ay - dy, bdy = by - dy, cdy = cy - dy;
 
-        double bdxcdy = bdx * cdy - cdx * bdy;
-        double cdxady = cdx * ady - adx * cdy;
-        double adxbdy = adx * bdy - bdx * ady;
+        double bdxcdy = bdx * cdy, cdxbdy = cdx * bdy;
+        double cdxady = cdx * ady, adxcdy = adx * cdy;
+        double adxbdy = adx * bdy, bdxady = bdx * ady;
 
         double alift = adx * adx + ady * ady;
         double blift = bdx * bdx + bdy * bdy;
         double clift = cdx * cdx + cdy * cdy;
 
-        double det = alift * bdxcdy + blift * cdxady + clift * adxbdy;
+        double det = alift * (bdxcdy - cdxbdy)
+                   + blift * (cdxady - adxcdy)
+                   + clift * (adxbdy - bdxady);
 
-        // iccerrboundA for double ≈ 10·ε
-        double permanent = (Math.Abs(bdxcdy) + Math.Abs(cdx * bdy)) * alift
-                         + (Math.Abs(cdxady) + Math.Abs(adx * cdy)) * blift
-                         + (Math.Abs(adxbdy) + Math.Abs(bdx * ady)) * clift;
-        const double errBound = 1.1102230246251565e-15;
-        if (Math.Abs(det) > errBound * permanent)
+        double permanent = (Math.Abs(bdxcdy) + Math.Abs(cdxbdy)) * alift
+                         + (Math.Abs(cdxady) + Math.Abs(adxcdy)) * blift
+                         + (Math.Abs(adxbdy) + Math.Abs(bdxady)) * clift;
+
+        if (Math.Abs(det) >= IccBoundAD * permanent)
         {
             return det;
         }
 
-        // Exact decimal fallback when inputs are small enough to avoid overflow.
-        // This matches C++ expand::incircle<double> (Shewchuk exact) and is exact
-        // for any 64-bit double inputs within the threshold, unlike the double-double
-        // approximation which can give wrong signs for near-degenerate cases.
-        if (Math.Abs(adx) < InCircleDecimalThreshold
-            && Math.Abs(ady) < InCircleDecimalThreshold
-            && Math.Abs(bdx) < InCircleDecimalThreshold
-            && Math.Abs(bdy) < InCircleDecimalThreshold
-            && Math.Abs(cdx) < InCircleDecimalThreshold
-            && Math.Abs(cdy) < InCircleDecimalThreshold)
+        // Stage B
+        Span<double> bc = stackalloc double[4];
+        Span<double> ca = stackalloc double[4];
+        Span<double> ab = stackalloc double[4];
+        int bcLen = TwoTwoDiff(bdx, cdy, cdx, bdy, bc);
+        int caLen = TwoTwoDiff(cdx, ady, adx, cdy, ca);
+        int abLen = TwoTwoDiff(adx, bdy, bdx, ady, ab);
+
+        Span<double> adet = stackalloc double[32];
+        int adetLen = ScaleExpansionSum(bc, bcLen, adx, ady, adet);
+        Span<double> bdet = stackalloc double[32];
+        int bdetLen = ScaleExpansionSum(ca, caLen, bdx, bdy, bdet);
+        Span<double> cdet = stackalloc double[32];
+        int cdetLen = ScaleExpansionSum(ab, abLen, cdx, cdy, cdet);
+
+        Span<double> abSum = stackalloc double[64];
+        int abSumLen = ExpansionSum(adet, adetLen, bdet, bdetLen, abSum);
+        Span<double> fin1 = stackalloc double[96];
+        int fin1Len = ExpansionSum(abSum, abSumLen, cdet, cdetLen, fin1);
+
+        det = Estimate(fin1, fin1Len);
+        if (Math.Abs(det) >= IccBoundBD * permanent)
         {
-            return InCircleExactD(adx, ady, bdx, bdy, cdx, cdy);
+            return det;
         }
 
-        // Double-double fallback for larger inputs.
-        var (bc_h, bc_e) = TwoCross(bdx, cdy, cdx, bdy);
-        var (ca_h, ca_e) = TwoCross(cdx, ady, adx, cdy);
-        var (ab_h, ab_e) = TwoCross(adx, bdy, bdx, ady);
+        // Stage C
+        double adxtail = MinusTail(ax, dx, adx);
+        double adytail = MinusTail(ay, dy, ady);
+        double bdxtail = MinusTail(bx, dx, bdx);
+        double bdytail = MinusTail(by, dy, bdy);
+        double cdxtail = MinusTail(cx, dx, cdx);
+        double cdytail = MinusTail(cy, dy, cdy);
 
-        double sum_hi = alift * bc_h + blift * ca_h + clift * ab_h;
-        double sum_lo = alift * bc_e + blift * ca_e + clift * ab_e;
-        return sum_hi != 0.0 ? sum_hi : sum_lo;
+        if (adxtail == 0.0 && adytail == 0.0 && bdxtail == 0.0
+            && bdytail == 0.0 && cdxtail == 0.0 && cdytail == 0.0)
+        {
+            return det;
+        }
+
+        double errC = IccBoundCD * permanent + ResultErrBound * Math.Abs(det);
+        det += ((adx * adx + ady * ady) * ((bdx * cdytail + cdy * bdxtail) - (bdy * cdxtail + cdx * bdytail))
+              + (bdx * cdy - bdy * cdx) * (adx * adxtail + ady * adytail) * 2.0)
+             + ((bdx * bdx + bdy * bdy) * ((cdx * adytail + ady * cdxtail) - (cdy * adxtail + adx * cdytail))
+              + (cdx * ady - cdy * adx) * (bdx * bdxtail + bdy * bdytail) * 2.0)
+             + ((cdx * cdx + cdy * cdy) * ((adx * bdytail + bdy * adxtail) - (ady * bdxtail + bdx * adytail))
+              + (adx * bdy - ady * bdx) * (cdx * cdxtail + cdy * cdytail) * 2.0);
+        if (Math.Abs(det) >= errC)
+        {
+            return det;
+        }
+
+        // Stage D: exact
+        return InCircleExact(ax, ay, bx, by, cx, cy, dx, dy);
     }
 
-    /// <summary>
-    /// Exact sign of the incircle determinant using <see cref="decimal"/> arithmetic
-    /// on the already-computed double-precision differences adx…cdy.
-    /// Returns +ε, −ε, or 0 (where ε = <see cref="double.Epsilon"/>).
-    /// </summary>
-    private static double InCircleExactD(
-        double adx, double ady,
-        double bdx, double bdy,
-        double cdx, double cdy)
+    private static double InCircleExact(
+        double ax, double ay, double bx, double by,
+        double cx, double cy, double dx, double dy)
     {
-        decimal madx = (decimal)adx, mbdx = (decimal)bdx, mcdx = (decimal)cdx;
-        decimal mady = (decimal)ady, mbdy = (decimal)bdy, mcdy = (decimal)cdy;
+        Span<double> abE = stackalloc double[4];
+        Span<double> bcE = stackalloc double[4];
+        Span<double> cdE = stackalloc double[4];
+        Span<double> daE = stackalloc double[4];
+        Span<double> acE = stackalloc double[4];
+        Span<double> bdE = stackalloc double[4];
+        int abLen = TwoTwoDiff(ax, by, bx, ay, abE);
+        int bcLen = TwoTwoDiff(bx, cy, cx, by, bcE);
+        int cdLen = TwoTwoDiff(cx, dy, dx, cy, cdE);
+        int daLen = TwoTwoDiff(dx, ay, ax, dy, daE);
+        int acLen = TwoTwoDiff(ax, cy, cx, ay, acE);
+        int bdLen = TwoTwoDiff(bx, dy, dx, by, bdE);
 
-        decimal mbdxcdy = mbdx * mcdy - mcdx * mbdy;
-        decimal mcdxady = mcdx * mady - madx * mcdy;
-        decimal madxbdy = madx * mbdy - mbdx * mady;
+        // abc = ab + bc - ac
+        Span<double> negAc = stackalloc double[4];
+        NegateInto(acE, acLen, negAc);
+        Span<double> abbc = stackalloc double[8];
+        int abbcLen = ExpansionSum(abE, abLen, bcE, bcLen, abbc);
+        Span<double> abc = stackalloc double[12];
+        int abcLen = ExpansionSum(abbc, abbcLen, negAc, acLen, abc);
 
-        decimal malift = madx * madx + mady * mady;
-        decimal mblift = mbdx * mbdx + mbdy * mbdy;
-        decimal mclift = mcdx * mcdx + mcdy * mcdy;
+        // bcd = bc + cd - bd
+        Span<double> negBd = stackalloc double[4];
+        NegateInto(bdE, bdLen, negBd);
+        Span<double> bccd = stackalloc double[8];
+        int bccdLen = ExpansionSum(bcE, bcLen, cdE, cdLen, bccd);
+        Span<double> bcd = stackalloc double[12];
+        int bcdLen = ExpansionSum(bccd, bccdLen, negBd, bdLen, bcd);
 
-        decimal mdet = malift * mbdxcdy + mblift * mcdxady + mclift * madxbdy;
+        // cda = cd + da + ac
+        Span<double> cdda = stackalloc double[8];
+        int cddaLen = ExpansionSum(cdE, cdLen, daE, daLen, cdda);
+        Span<double> cda = stackalloc double[12];
+        int cdaLen = ExpansionSum(cdda, cddaLen, acE, acLen, cda);
 
-        if (mdet > 0m)
-        {
-            return double.Epsilon;
-        }
+        // dab = da + ab + bd
+        Span<double> daab = stackalloc double[8];
+        int daabLen = ExpansionSum(daE, daLen, abE, abLen, daab);
+        Span<double> dab = stackalloc double[12];
+        int dabLen = ExpansionSum(daab, daabLen, bdE, bdLen, dab);
 
-        if (mdet < 0m)
-        {
-            return -double.Epsilon;
-        }
+        // adet = bcd*ax*ax + bcd*ay*ay
+        Span<double> adet = stackalloc double[96];
+        int adetLen = ScaleExpansionSum(bcd, bcdLen, ax, ay, adet);
 
-        return 0.0;
+        // bdet = -(cda*bx*bx + cda*by*by)
+        Span<double> bdetPos = stackalloc double[96];
+        int bdetPosLen = ScaleExpansionSum(cda, cdaLen, bx, by, bdetPos);
+        Span<double> bdet = stackalloc double[96];
+        NegateInto(bdetPos, bdetPosLen, bdet);
+        int bdetLen = bdetPosLen;
+
+        // cdet = dab*cx*cx + dab*cy*cy
+        Span<double> cdet = stackalloc double[96];
+        int cdetLen = ScaleExpansionSum(dab, dabLen, cx, cy, cdet);
+
+        // ddet = -(abc*dx*dx + abc*dy*dy)
+        Span<double> ddetPos = stackalloc double[96];
+        int ddetPosLen = ScaleExpansionSum(abc, abcLen, dx, dy, ddetPos);
+        Span<double> ddet = stackalloc double[96];
+        NegateInto(ddetPos, ddetPosLen, ddet);
+        int ddetLen = ddetPosLen;
+
+        // deter = (adet + bdet) + (cdet + ddet)
+        Span<double> ab2 = stackalloc double[192];
+        int ab2Len = ExpansionSum(adet, adetLen, bdet, bdetLen, ab2);
+        Span<double> cd2 = stackalloc double[192];
+        int cd2Len = ExpansionSum(cdet, cdetLen, ddet, ddetLen, cd2);
+        Span<double> deter = stackalloc double[384];
+        int deterLen = ExpansionSum(ab2, ab2Len, cd2, cd2Len, deter);
+
+        return MostSignificant(deter, deterLen);
     }
 
-    /// <summary>
-    /// InCircle predicate for <see cref="float"/>.
-    /// All intermediate differences and products computed in <b>float</b> precision
-    /// (matching C++ <c>predicates::adaptive::incircle&lt;float&gt;</c>). Falls back
-    /// to exact <see cref="decimal"/> arithmetic (applied to the float-rounded
-    /// intermediates) to match the sign returned by the C++ float expansion.
-    /// </summary>
+    /// <summary>InCircle for <see cref="float"/>. Fast path in float; exact decimal fallback.</summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static float InCircle(
-        float ax, float ay,
-        float bx, float by,
-        float cx, float cy,
-        float dx, float dy)
+        float ax, float ay, float bx, float by,
+        float cx, float cy, float dx, float dy)
     {
-        // Fast path: ALL in float — matches C++ fast path exactly.
-        float adx = ax - dx;
-        float bdx = bx - dx;
-        float cdx = cx - dx;
-        float ady = ay - dy;
-        float bdy = by - dy;
-        float cdy = cy - dy;
+        float adx = ax - dx, bdx = bx - dx, cdx = cx - dx;
+        float ady = ay - dy, bdy = by - dy, cdy = cy - dy;
 
-        float bdxcdy = bdx * cdy;
-        float cdxbdy = cdx * bdy;
-        float cdxady = cdx * ady;
-        float adxcdy = adx * cdy;
-        float adxbdy = adx * bdy;
-        float bdxady = bdx * ady;
+        float bdxcdy = bdx * cdy, cdxbdy = cdx * bdy;
+        float cdxady = cdx * ady, adxcdy = adx * cdy;
+        float adxbdy = adx * bdy, bdxady = bdx * ady;
 
         float alift = adx * adx + ady * ady;
         float blift = bdx * bdx + bdy * bdy;
@@ -297,87 +346,226 @@ internal static class Predicates
             return det;
         }
 
-        // Exact fallback: convert the float-rounded intermediates to decimal
-        // (each decimal(float) is exact) and compute with no further rounding.
-        // This gives the same sign as the C++ TwoTwoDiff float-expansion fallback.
         return InCircleExactF(adx, ady, bdx, bdy, cdx, cdy);
     }
 
-    /// <summary>
-    /// Computes the exact sign of the incircle determinant using <see cref="decimal"/>
-    /// arithmetic applied to the float-rounded difference values
-    /// <paramref name="adx"/> … <paramref name="cdy"/>.
-    /// Matches the sign returned by the C++ adaptive float expansion (TwoTwoDiff).
-    /// Returns +ε, −ε, or 0 (where ε = <see cref="float.Epsilon"/>).
-    /// </summary>
     private static float InCircleExactF(
-        float adx, float ady,
-        float bdx, float bdy,
-        float cdx, float cdy)
+        float adx, float ady, float bdx, float bdy, float cdx, float cdy)
     {
         decimal madx = (decimal)adx, mbdx = (decimal)bdx, mcdx = (decimal)cdx;
         decimal mady = (decimal)ady, mbdy = (decimal)bdy, mcdy = (decimal)cdy;
-
-        decimal mbdxcdy = mbdx * mcdy - mcdx * mbdy;
-        decimal mcdxady = mcdx * mady - madx * mcdy;
-        decimal madxbdy = madx * mbdy - mbdx * mady;
-
-        decimal malift = madx * madx + mady * mady;
-        decimal mblift = mbdx * mbdx + mbdy * mbdy;
-        decimal mclift = mcdx * mcdx + mcdy * mcdy;
-
-        decimal mdet = malift * mbdxcdy + mblift * mcdxady + mclift * madxbdy;
-
-        if (mdet > 0m)
-        {
-            return float.Epsilon;
-        }
-
-        if (mdet < 0m)
-        {
-            return -float.Epsilon;
-        }
-
-        return 0f;
+        decimal mdet = (madx * madx + mady * mady) * (mbdx * mcdy - mcdx * mbdy)
+                     + (mbdx * mbdx + mbdy * mbdy) * (mcdx * mady - madx * mcdy)
+                     + (mcdx * mcdx + mcdy * mcdy) * (madx * mbdy - mbdx * mady);
+        return mdet > 0m ? float.Epsilon : mdet < 0m ? -float.Epsilon : 0f;
     }
 
-    // -------------------------------------------------------------------------
-    // Arithmetic helpers (double precision)
-    // -------------------------------------------------------------------------
+    // =========================================================================
+    // Shewchuk/Lenthe floating-point expansion primitives
+    // =========================================================================
 
-    /// <summary>
-    /// Computes <c>a*b - c*d</c> as <c>(hi, lo)</c> with full double-double accuracy.
-    /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static (double hi, double lo) TwoCross(double a, double b, double c, double d)
+    private static double PlusTail(double a, double b, double x)
     {
-        var (ab, ab_err) = TwoProd(a, b);
-        var (cd, cd_err) = TwoProd(c, d);
-        double hi = ab - cd;
-        double lo = (ab - hi) - cd + ab_err - cd_err;
-        return (hi, lo);
+        double bv = x - a;
+        return (a - (x - bv)) + (b - bv);
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static double FastPlusTail(double a, double b, double x)
+    {
+        return b - (x - a);
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static double MinusTail(double a, double b, double x)
+    {
+        double bv = a - x;
+        double av = x + bv;
+        return (a - av) + (bv - b);
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static (double aHi, double aLo) Split(double a)
+    {
+        double c = SplitterD * a;
+        double aBig = c - a;
+        double aHi = c - aBig;
+        return (aHi, a - aHi);
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static double MultTail(double a, double b, double p)
+    {
+        var (aHi, aLo) = Split(a);
+        var (bHi, bLo) = Split(b);
+        double y = p - aHi * bHi;
+        y -= aLo * bHi;
+        y -= aHi * bLo;
+        return aLo * bLo - y;
     }
 
     /// <summary>
-    /// Computes <c>a * b</c> exactly as <c>(hi, lo)</c> where <c>hi + lo = a·b</c>.
-    /// Uses the Veltkamp split (splitter = 2^27 + 1 for double).
+    /// Exact expansion of <c>ax*by - ay*bx</c> (up to 4 non-zero terms).
+    /// Matches Lenthe <c>ExpansionBase::TwoTwoDiff</c>.
     /// </summary>
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static (double hi, double lo) TwoProd(double a, double b)
+    private static int TwoTwoDiff(double ax, double by, double ay, double bx, Span<double> h)
     {
-        double x = a * b;
-        const double splitter = 134217729.0; // 2^27 + 1
-        double ca = splitter * a;
-        double abig = ca - a;
-        double ahi = ca - abig;
-        double alo = a - ahi;
+        double axby1 = ax * by;
+        double axby0 = MultTail(ax, by, axby1);
+        double bxay1 = bx * ay;
+        double bxay0 = MultTail(bx, ay, bxay1);
 
-        double cb = splitter * b;
-        abig = cb - b;
-        double bhi = cb - abig;
-        double blo = b - bhi;
+        double i0 = axby0 - bxay0;
+        double x0 = MinusTail(axby0, bxay0, i0);
+        double j = axby1 + i0;
+        double t0 = PlusTail(axby1, i0, j);
+        double i1 = t0 - bxay1;
+        double x1 = MinusTail(t0, bxay1, i1);
+        double x3 = j + i1;
+        double x2 = PlusTail(j, i1, x3);
 
-        double err = ((ahi * bhi - x) + ahi * blo + alo * bhi) + alo * blo;
-        return (x, err);
+        int n = 0;
+        if (x0 != 0.0) { h[n++] = x0; }
+        if (x1 != 0.0) { h[n++] = x1; }
+        if (x2 != 0.0) { h[n++] = x2; }
+        if (x3 != 0.0) { h[n++] = x3; }
+        return n;
+    }
+
+    /// <summary>
+    /// ScaleExpansion: <c>e * b</c> written to <c>h</c>.
+    /// Matches Lenthe <c>ExpansionBase::ScaleExpansion</c>.
+    /// Output has up to <c>2*elen</c> terms.
+    /// </summary>
+    private static int ScaleExpansion(Span<double> e, int elen, double b, Span<double> h)
+    {
+        if (elen == 0 || b == 0.0)
+        {
+            return 0;
+        }
+
+        var (bHi, bLo) = Split(b);
+        double Q = e[0] * b;
+        double hh = DekkersPresplit(e[0], bHi, bLo, Q);
+        int hIdx = 0;
+        if (hh != 0.0) { h[hIdx++] = hh; }
+
+        for (int i = 1; i < elen; i++)
+        {
+            double Ti = e[i] * b;
+            double ti = DekkersPresplit(e[i], bHi, bLo, Ti);
+            double Qi = Q + ti;
+            hh = PlusTail(Q, ti, Qi);
+            if (hh != 0.0) { h[hIdx++] = hh; }
+            Q = Ti + Qi;
+            hh = FastPlusTail(Ti, Qi, Q);
+            if (hh != 0.0) { h[hIdx++] = hh; }
+        }
+
+        if (Q != 0.0) { h[hIdx++] = Q; }
+        return hIdx;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static double DekkersPresplit(double a, double bHi, double bLo, double p)
+    {
+        var (aHi, aLo) = Split(a);
+        double y = p - aHi * bHi;
+        y -= aLo * bHi;
+        y -= aHi * bLo;
+        return aLo * bLo - y;
+    }
+
+    /// <summary>
+    /// Computes <c>e*s*s + e*t*t</c> as an expansion (two ScaleExpansion calls each, then sum).
+    /// Max output: 32 terms for 4-term input (used for InCircle Stage B lift terms).
+    /// </summary>
+    private static int ScaleExpansionSum(Span<double> e, int elen, double s, double t, Span<double> h)
+    {
+        Span<double> es = stackalloc double[8];
+        int esLen = ScaleExpansion(e, elen, s, es);
+        Span<double> ess = stackalloc double[16];
+        int essLen = ScaleExpansion(es, esLen, s, ess);
+
+        Span<double> et = stackalloc double[8];
+        int etLen = ScaleExpansion(e, elen, t, et);
+        Span<double> ett = stackalloc double[16];
+        int ettLen = ScaleExpansion(et, etLen, t, ett);
+
+        return ExpansionSum(ess, essLen, ett, ettLen, h);
+    }
+
+    /// <summary>
+    /// Merge-then-accumulate two expansions. Matches Lenthe <c>ExpansionBase::ExpansionSum</c>:
+    /// std::merge by |value| (stable), then sequential grow-expansion accumulation.
+    /// </summary>
+    private static int ExpansionSum(Span<double> e, int elen, Span<double> f, int flen, Span<double> h)
+    {
+        if (elen == 0 && flen == 0) { return 0; }
+        if (elen == 0) { f[..flen].CopyTo(h); return flen; }
+        if (flen == 0) { e[..elen].CopyTo(h); return elen; }
+
+        int total = elen + flen;
+
+        // Merge sorted by |value| into temporary buffer
+        Span<double> merged = total <= 400 ? stackalloc double[400] : new double[total];
+        int ei = 0, fi = 0, mi = 0;
+        while (ei < elen && fi < flen)
+        {
+            if (Math.Abs(f[fi]) < Math.Abs(e[ei]))
+            {
+                merged[mi++] = f[fi++];
+            }
+            else
+            {
+                merged[mi++] = e[ei++];
+            }
+        }
+
+        while (ei < elen) { merged[mi++] = e[ei++]; }
+        while (fi < flen) { merged[mi++] = f[fi++]; }
+
+        // Sequential accumulation
+        int hIdx = 0;
+        double Q = merged[0];
+        double Qnew = merged[1] + Q;
+        double hh = FastPlusTail(merged[1], Q, Qnew);
+        Q = Qnew;
+        if (hh != 0.0) { h[hIdx++] = hh; }
+
+        for (int g = 2; g < mi; g++)
+        {
+            Qnew = Q + merged[g];
+            hh = PlusTail(Q, merged[g], Qnew);
+            Q = Qnew;
+            if (hh != 0.0) { h[hIdx++] = hh; }
+        }
+
+        if (Q != 0.0) { h[hIdx++] = Q; }
+        return hIdx;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static double Estimate(Span<double> e, int elen)
+    {
+        double sum = 0.0;
+        for (int i = 0; i < elen; i++) { sum += e[i]; }
+        return sum;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static double MostSignificant(Span<double> e, int elen)
+    {
+        for (int i = elen - 1; i >= 0; i--)
+        {
+            if (e[i] != 0.0) { return e[i]; }
+        }
+        return 0.0;
+    }
+
+    private static void NegateInto(Span<double> src, int len, Span<double> dst)
+    {
+        for (int i = 0; i < len; i++) { dst[i] = -src[i]; }
     }
 }
