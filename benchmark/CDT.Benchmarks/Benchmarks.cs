@@ -7,9 +7,7 @@ using BenchmarkDotNet.Configs;
 using BenchmarkDotNet.Running;
 using CDT;
 
-BenchmarkRunner.Run(
-    [typeof(ConstrainedSwedenBenchmarks), typeof(SmallDatasetBenchmarks)],
-    DefaultConfig.Instance);
+BenchmarkSwitcher.FromAssembly(typeof(BenchmarkInputReader).Assembly).Run(args);
 
 // ---------------------------------------------------------------------------
 // Helpers shared by all benchmarks
@@ -77,6 +75,7 @@ internal static class BenchmarkInputReader
 [MemoryDiagnoser]
 [GroupBenchmarksBy(BenchmarkLogicalGroupRule.ByCategory)]
 [CategoriesColumn]
+[ShortRunJob]
 public class ConstrainedSwedenBenchmarks
 {
     private List<V2d<double>> _vertices = null!;
@@ -168,6 +167,7 @@ public class ConstrainedSwedenBenchmarks
 [MemoryDiagnoser]
 [GroupBenchmarksBy(BenchmarkLogicalGroupRule.ByCategory)]
 [CategoriesColumn]
+[ShortRunJob]
 public class SmallDatasetBenchmarks
 {
     private List<V2d<double>> _vertices = null!;
