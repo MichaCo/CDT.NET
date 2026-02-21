@@ -129,7 +129,8 @@ public static class TriangulationTopo
         foreach (var kv in pieceList)
         {
             sb.Append(kv.Key.V1).Append(' ').Append(kv.Key.V2).Append('\n');
-            var subs = kv.Value.OrderBy(e => e.V1).ThenBy(e => e.V2).ToList();
+            // Sub-edges written in insertion order (matching C++ which uses std::vector insertion order)
+            var subs = kv.Value;
             sb.Append("    ").Append(subs.Count).Append('\n');
             foreach (var sub in subs)
                 sb.Append("    ").Append(sub.V1).Append(' ').Append(sub.V2).Append('\n');
