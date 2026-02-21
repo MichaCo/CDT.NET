@@ -176,8 +176,13 @@ internal static class TriangleUtils
     public static PtLineLocation LocatePointLine(
         V2d<float> p, V2d<float> v1, V2d<float> v2, float tolerance = 0f)
     {
-        float o = Predicates.Orient2D(v1.X, v1.Y, v2.X, v2.Y, p.X, p.Y);
-        return ClassifyOrientation(o, tolerance);
+        // Use the double overload directly: casting (float)double can silently zero
+        // a tiny-but-nonzero result, flipping the sign classification.
+        double o = Predicates.Orient2D(
+            (double)v1.X, (double)v1.Y,
+            (double)v2.X, (double)v2.Y,
+            (double)p.X,  (double)p.Y);
+        return ClassifyOrientation(o, (double)tolerance);
     }
 
     /// <summary>Classifies the position of point <paramref name="p"/> within triangle (v1,v2,v3).</summary>
@@ -242,7 +247,11 @@ internal static class TriangleUtils
     public static bool IsInCircumcircle(
         V2d<float> p,
         V2d<float> v1, V2d<float> v2, V2d<float> v3)
-        => Predicates.InCircle(v1.X, v1.Y, v2.X, v2.Y, v3.X, v3.Y, p.X, p.Y) > 0f;
+        => Predicates.InCircle(
+            (double)v1.X, (double)v1.Y,
+            (double)v2.X, (double)v2.Y,
+            (double)v3.X, (double)v3.Y,
+            (double)p.X,  (double)p.Y) > 0.0;   // compare double result, not (float) cast
 
     /// <summary>Tests whether any pair of triangles (given as vertex triangle lists) share an edge.</summary>
     public static bool VerticesShareEdge(List<int> aTris, List<int> bTris)
