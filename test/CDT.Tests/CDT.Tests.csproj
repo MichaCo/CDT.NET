@@ -22,4 +22,9 @@
     <ProjectReference Include="..\..\src\CDT.Core\CDT.Core.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <Content Include="inputs\**" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="expected\**" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
 </Project>
