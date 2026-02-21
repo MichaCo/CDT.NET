@@ -1,0 +1,14 @@
+<Solution>
+  <Folder Name="/benchmark/">
+    <Project Path="benchmark/CDT.Benchmarks/CDT.Benchmarks.csproj" />
+  </Folder>
+  <Folder Name="/src/">
+    <Project Path="src/CDT.Core/CDT.Core.csproj" />
+  </Folder>
+  <Folder Name="/test/">
+    <Project Path="test/CDT.Tests/CDT.Tests.csproj" />
+  </Folder>
+  <Folder Name="/viz/">
+    <Project Path="viz/CDT.Viz/CDT.Viz.csproj" />
+  </Folder>
+</Solution>
