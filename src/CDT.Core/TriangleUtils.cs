@@ -277,15 +277,23 @@ internal static class TriangleUtils
         V2d<float> a, V2d<float> b,
         V2d<float> c, V2d<float> d)
     {
-        var ad = ToDouble(a); var bd = ToDouble(b);
-        var cd = ToDouble(c); var dd = ToDouble(d);
-        var res = IntersectionPosition(ad, bd, cd, dd);
-        return new V2d<float>((float)res.X, (float)res.Y);
+        // Use float-precision Orient2D throughout, matching C++ detail::intersectionPosition<float>.
+        float acd = Predicates.Orient2D(c.X, c.Y, d.X, d.Y, a.X, a.Y);
+        float bcd = Predicates.Orient2D(c.X, c.Y, d.X, d.Y, b.X, b.Y);
+        float tab = acd / (acd - bcd);
+
+        float cab = Predicates.Orient2D(a.X, a.Y, b.X, b.Y, c.X, c.Y);
+        float dab = Predicates.Orient2D(a.X, a.Y, b.X, b.Y, d.X, d.Y);
+        float tcd = cab / (cab - dab);
+
+        return new V2d<float>(
+            MathF.Abs(a.X - b.X) < MathF.Abs(c.X - d.X) ? LerpF(a.X, b.X, tab) : LerpF(c.X, d.X, tcd),
+            MathF.Abs(a.Y - b.Y) < MathF.Abs(c.Y - d.Y) ? LerpF(a.Y, b.Y, tab) : LerpF(c.Y, d.Y, tcd));
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static double Lerp(double a, double b, double t) => (1.0 - t) * a + t * b;
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static V2d<double> ToDouble(V2d<float> v) => new((double)v.X, (double)v.Y);
+    private static float LerpF(float a, float b, float t) => (1f - t) * a + t * b;
 }
