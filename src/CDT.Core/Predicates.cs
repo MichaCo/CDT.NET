@@ -60,14 +60,15 @@ internal static class Predicates
 
     /// <summary>
     /// Orient2d predicate for <see cref="float"/>.
-    /// Upcasts to double and uses the single-pass Lenthe formula.
+    /// Promotes each coordinate to double first (Lenthe promote&lt;float&gt;=double),
+    /// then computes the cross product in double and casts the result back to float.
     /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static float Orient2D(
         float ax, float ay,
         float bx, float by,
         float cx, float cy)
-        => (float)((double)(ax - cx) * (by - cy) - (double)(ay - cy) * (bx - cx));
+        => (float)(((double)ax - cx) * ((double)by - cy) - ((double)ay - cy) * ((double)bx - cx));
 
     // -------------------------------------------------------------------------
     // incircle: positive => d is inside the circumcircle of (a,b,c) in CCW order
