@@ -165,7 +165,8 @@ internal static class Predicates
     /// InCircle predicate for <see cref="float"/>.
     /// All intermediate differences and products computed in <b>float</b> precision
     /// (matching C++ <c>predicates::adaptive::incircle&lt;float&gt;</c>). Falls back
-    /// to a double computation using the float-rounded intermediates for the exact sign.
+    /// to exact <see cref="decimal"/> arithmetic (applied to the float-rounded
+    /// intermediates) to match the sign returned by the C++ float expansion.
     /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static float InCircle(
@@ -206,22 +207,48 @@ internal static class Predicates
             return det;
         }
 
-        // Fallback: recompute using the FLOAT-rounded differences (adx, bdx … cdy)
-        // widened to double. Each cross-product of two 24-bit floats is exact in
-        // 53-bit double; the lift×cross product is approximate but sufficient for sign.
-        double dadx = adx, dbdx = bdx, dcdx = cdx;
-        double dady = ady, dbdy = bdy, dcdy = cdy;
+        // Exact fallback: convert the float-rounded intermediates to decimal
+        // (each decimal(float) is exact) and compute with no further rounding.
+        // This gives the same sign as the C++ TwoTwoDiff float-expansion fallback.
+        return InCircleExactF(adx, ady, bdx, bdy, cdx, cdy);
+    }
 
-        double dbdxcdy = dbdx * dcdy - dcdx * dbdy;
-        double dcdxady = dcdx * dady - dadx * dcdy;
-        double dadxbdy = dadx * dbdy - dbdx * dady;
+    /// <summary>
+    /// Computes the exact sign of the incircle determinant using <see cref="decimal"/>
+    /// arithmetic applied to the float-rounded difference values
+    /// <paramref name="adx"/> … <paramref name="cdy"/>.
+    /// Matches the sign returned by the C++ adaptive float expansion (TwoTwoDiff).
+    /// Returns +ε, −ε, or 0 (where ε = <see cref="float.Epsilon"/>).
+    /// </summary>
+    private static float InCircleExactF(
+        float adx, float ady,
+        float bdx, float bdy,
+        float cdx, float cdy)
+    {
+        decimal madx = (decimal)adx, mbdx = (decimal)bdx, mcdx = (decimal)cdx;
+        decimal mady = (decimal)ady, mbdy = (decimal)bdy, mcdy = (decimal)cdy;
 
-        double dalift = dadx * dadx + dady * dady;
-        double dblift = dbdx * dbdx + dbdy * dbdy;
-        double dclift = dcdx * dcdx + dcdy * dcdy;
+        decimal mbdxcdy = mbdx * mcdy - mcdx * mbdy;
+        decimal mcdxady = mcdx * mady - madx * mcdy;
+        decimal madxbdy = madx * mbdy - mbdx * mady;
 
-        double ddet = dalift * dbdxcdy + dblift * dcdxady + dclift * dadxbdy;
-        return (float)ddet;
+        decimal malift = madx * madx + mady * mady;
+        decimal mblift = mbdx * mbdx + mbdy * mbdy;
+        decimal mclift = mcdx * mcdx + mcdy * mcdy;
+
+        decimal mdet = malift * mbdxcdy + mblift * mcdxady + mclift * madxbdy;
+
+        if (mdet > 0m)
+        {
+            return float.Epsilon;
+        }
+
+        if (mdet < 0m)
+        {
+            return -float.Epsilon;
+        }
+
+        return 0f;
     }
 
     // -------------------------------------------------------------------------
