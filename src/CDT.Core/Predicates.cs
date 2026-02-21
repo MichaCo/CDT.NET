@@ -37,9 +37,17 @@ internal static class Predicates
     // -------------------------------------------------------------------------
 
     /// <summary>
+    /// Maximum absolute value of a difference coordinate for the Orient2D decimal exact fallback.
+    /// acx·bcy product &lt; (Δ)² ≤ 7.9e28 ⟺ Δ &lt; ~2.8e14; use 1e13 for safety.
+    /// </summary>
+    private const double Orient2DDecimalThreshold = 1e13;
+
+    /// <summary>
     /// Orient2d predicate for <see cref="double"/>.
-    /// Fast estimate with double-double compensation fallback, matching C++
-    /// <c>predicates::adaptive::orient2d&lt;double&gt;</c> (GCC/Linux long-double behaviour).
+    /// Three-level fallback matching C++ <c>predicates::adaptive/expand::orient2d&lt;double&gt;</c>:
+    /// 1) Fast double estimate with error-bound check.
+    /// 2) Double-double exact round-off.
+    /// 3) Exact <see cref="decimal"/> arithmetic when inputs are small enough.
     /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static double Orient2D(
@@ -59,7 +67,27 @@ internal static class Predicates
             return det;
         }
 
-        // Double-double fallback: acx*bcy and acy*bcx computed with exact round-off.
+        // Exact decimal fallback when inputs are small enough.
+        if (Math.Abs(acx) < Orient2DDecimalThreshold
+            && Math.Abs(acy) < Orient2DDecimalThreshold
+            && Math.Abs(bcx) < Orient2DDecimalThreshold
+            && Math.Abs(bcy) < Orient2DDecimalThreshold)
+        {
+            decimal mdet = (decimal)acx * (decimal)bcy - (decimal)acy * (decimal)bcx;
+            if (mdet > 0m)
+            {
+                return double.Epsilon;
+            }
+
+            if (mdet < 0m)
+            {
+                return -double.Epsilon;
+            }
+
+            return 0.0;
+        }
+
+        // Double-double fallback for larger inputs.
         var (p, pe) = TwoProd(acx, bcy);
         var (q, qe) = TwoProd(acy, bcx);
         double hi = p - q;
@@ -118,8 +146,20 @@ internal static class Predicates
     // -------------------------------------------------------------------------
 
     /// <summary>
+    /// Maximum absolute value of a difference coordinate beyond which the decimal
+    /// exact fallback would overflow <see cref="decimal.MaxValue"/> (~7.9e28).
+    /// alift·bdxcdy ≤ 2·(Δ)²·2·(Δ)² = 4·(Δ)⁴; 3 terms ≤ 12·(Δ)⁴ &lt; 7.9e28 ⟺ Δ &lt; ~2.1e7.
+    /// We use 1e6 for a comfortable safety margin.
+    /// </summary>
+    private const double InCircleDecimalThreshold = 1e6;
+
+    /// <summary>
     /// InCircle predicate for <see cref="double"/>.
-    /// Fast estimate with double-double compensation fallback.
+    /// Three-level fallback:
+    /// 1) Fast double estimate with Shewchuk error-bound check.
+    /// 2) Double-double compensation (catches most near-degenerate cases).
+    /// 3) Exact <see cref="decimal"/> arithmetic for inputs small enough to avoid overflow,
+    ///    matching C++ <c>predicates::expand::incircle&lt;double&gt;</c> (Shewchuk exact).
     /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static double InCircle(
@@ -151,7 +191,21 @@ internal static class Predicates
             return det;
         }
 
-        // Double-double fallback for each cross-product.
+        // Exact decimal fallback when inputs are small enough to avoid overflow.
+        // This matches C++ expand::incircle<double> (Shewchuk exact) and is exact
+        // for any 64-bit double inputs within the threshold, unlike the double-double
+        // approximation which can give wrong signs for near-degenerate cases.
+        if (Math.Abs(adx) < InCircleDecimalThreshold
+            && Math.Abs(ady) < InCircleDecimalThreshold
+            && Math.Abs(bdx) < InCircleDecimalThreshold
+            && Math.Abs(bdy) < InCircleDecimalThreshold
+            && Math.Abs(cdx) < InCircleDecimalThreshold
+            && Math.Abs(cdy) < InCircleDecimalThreshold)
+        {
+            return InCircleExactD(adx, ady, bdx, bdy, cdx, cdy);
+        }
+
+        // Double-double fallback for larger inputs.
         var (bc_h, bc_e) = TwoCross(bdx, cdy, cdx, bdy);
         var (ca_h, ca_e) = TwoCross(cdx, ady, adx, cdy);
         var (ab_h, ab_e) = TwoCross(adx, bdy, bdx, ady);
@@ -159,6 +213,42 @@ internal static class Predicates
         double sum_hi = alift * bc_h + blift * ca_h + clift * ab_h;
         double sum_lo = alift * bc_e + blift * ca_e + clift * ab_e;
         return sum_hi != 0.0 ? sum_hi : sum_lo;
+    }
+
+    /// <summary>
+    /// Exact sign of the incircle determinant using <see cref="decimal"/> arithmetic
+    /// on the already-computed double-precision differences adx…cdy.
+    /// Returns +ε, −ε, or 0 (where ε = <see cref="double.Epsilon"/>).
+    /// </summary>
+    private static double InCircleExactD(
+        double adx, double ady,
+        double bdx, double bdy,
+        double cdx, double cdy)
+    {
+        decimal madx = (decimal)adx, mbdx = (decimal)bdx, mcdx = (decimal)cdx;
+        decimal mady = (decimal)ady, mbdy = (decimal)bdy, mcdy = (decimal)cdy;
+
+        decimal mbdxcdy = mbdx * mcdy - mcdx * mbdy;
+        decimal mcdxady = mcdx * mady - madx * mcdy;
+        decimal madxbdy = madx * mbdy - mbdx * mady;
+
+        decimal malift = madx * madx + mady * mady;
+        decimal mblift = mbdx * mbdx + mbdy * mbdy;
+        decimal mclift = mcdx * mcdx + mcdy * mcdy;
+
+        decimal mdet = malift * mbdxcdy + mblift * mcdxady + mclift * madxbdy;
+
+        if (mdet > 0m)
+        {
+            return double.Epsilon;
+        }
+
+        if (mdet < 0m)
+        {
+            return -double.Epsilon;
+        }
+
+        return 0.0;
     }
 
     /// <summary>
