@@ -120,7 +120,7 @@ jobs:
         shell: pwsh
         run: |
           $version = "${{ github.ref_name }}" -replace '^v', ''
-          dotnet pack src/CDT.Core/CDT.Core.csproj --no-build -c Release -o ./artifacts /p:Version=$version
+          dotnet pack src/CDT.Core/CDT.Core.csproj --no-build -c Release -o \artifacts /p:Version=$version
 
       - name: NuGet login
         uses: NuGet/login@v1
@@ -130,5 +130,5 @@ jobs:
 
       - name: Push to NuGet.org
         run: |
-          dotnet nuget push "${{ github.workspace }}/artifacts/*.nupkg" --api-key ${{ steps.login.outputs.NUGET_API_KEY }} --source https://api.nuget.org/v3/index.json --skip-duplicate
+          dotnet nuget push "${{ github.workspace }}\artifacts\*.nupkg" --api-key ${{ steps.login.outputs.NUGET_API_KEY }} --source https://api.nuget.org/v3/index.json --skip-duplicate
         shell: pwsh
