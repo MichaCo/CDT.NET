@@ -79,6 +79,8 @@ internal sealed class KdTree<T>
     public int Size => _size;
 
     /// <summary>Inserts point at index <paramref name="iPoint"/> from the external buffer.</summary>
+    /// <remarks><paramref name="points"/> must be a <see cref="List{T}"/> so that
+    /// <see cref="CollectionsMarshal.AsSpan{T}"/> can be used to avoid bounds checks.</remarks>
     public void Insert(int iPoint, List<V2d<T>> points)
     {
         _size++;
@@ -147,6 +149,8 @@ internal sealed class KdTree<T>
     }
 
     /// <summary>Finds the nearest point to <paramref name="points"/> in the external buffer.</summary>
+    /// <remarks><paramref name="points"/> must be a <see cref="List{T}"/> so that
+    /// <see cref="CollectionsMarshal.AsSpan{T}"/> can be used to avoid bounds checks.</remarks>
     public int Nearest(T qx, T qy, List<V2d<T>> points)
     {
         var pSpan = CollectionsMarshal.AsSpan(points);

@@ -499,7 +499,7 @@ public sealed class Triangulation<T>
         }
     }
 
-    private List<Edge> InsertVertex_FlipFixedEdges(int iV)
+    private IReadOnlyList<Edge> InsertVertex_FlipFixedEdges(int iV)
     {
         _flippedEdges.Clear();
         // Use KD-tree if available, otherwise fall back to vertex 0 (first super-triangle vertex)
