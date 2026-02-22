@@ -2,6 +2,8 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
+using CDT.Predicates;
+
 namespace CDT.Tests;
 
 /// <summary>Tests for geometric predicates and utilities.</summary>
@@ -11,21 +13,21 @@ public sealed class PredicatesTests
     public void Orient2D_CounterClockwise_ReturnsPositive()
     {
         // v1=(0,0), v2=(1,0), p=(0.5,1) should be to the left → positive
-        double r = Predicates.Orient2D(0.0, 0.0, 1.0, 0.0, 0.5, 1.0);
+        double r = PredicatesAdaptive.Orient2d(0.0, 0.0, 1.0, 0.0, 0.5, 1.0);
         Assert.True(r > 0);
     }
 
     [Fact]
     public void Orient2D_Clockwise_ReturnsNegative()
     {
-        double r = Predicates.Orient2D(0.0, 0.0, 1.0, 0.0, 0.5, -1.0);
+        double r = PredicatesAdaptive.Orient2d(0.0, 0.0, 1.0, 0.0, 0.5, -1.0);
         Assert.True(r < 0);
     }
 
     [Fact]
     public void Orient2D_Collinear_ReturnsZero()
     {
-        double r = Predicates.Orient2D(0.0, 0.0, 1.0, 0.0, 0.5, 0.0);
+        double r = PredicatesAdaptive.Orient2d(0.0, 0.0, 1.0, 0.0, 0.5, 0.0);
         Assert.Equal(0.0, r, 15);
     }
 
@@ -33,7 +35,7 @@ public sealed class PredicatesTests
     public void InCircle_InsideCircle_ReturnsPositive()
     {
         // Triangle: (0,0),(4,0),(2,4) - circumcircle contains (2,1)
-        double r = Predicates.InCircle(0, 0, 4, 0, 2, 4, 2, 1);
+        double r = PredicatesAdaptive.InCircle(0, 0, 4, 0, 2, 4, 2, 1);
         Assert.True(r > 0);
     }
 
@@ -41,7 +43,7 @@ public sealed class PredicatesTests
     public void InCircle_OutsideCircle_ReturnsNegative()
     {
         // (2,-2) should be well outside the circumcircle of (0,0),(4,0),(2,4)
-        double r = Predicates.InCircle(0, 0, 4, 0, 2, 4, 2, -2);
+        double r = PredicatesAdaptive.InCircle(0, 0, 4, 0, 2, 4, 2, -2);
         Assert.True(r < 0);
     }
 }
@@ -54,14 +56,14 @@ public sealed class TriangleUtilsTests
     [InlineData(1, 2)]
     [InlineData(2, 0)]
     public void Ccw_CyclesForward(int i, int expected)
-        => Assert.Equal(expected, TriangleUtils.Ccw(i));
+        => Assert.Equal(expected, CdtUtils.Ccw(i));
 
     [Theory]
     [InlineData(0, 2)]
     [InlineData(1, 0)]
     [InlineData(2, 1)]
     public void Cw_CyclesBackward(int i, int expected)
-        => Assert.Equal(expected, TriangleUtils.Cw(i));
+        => Assert.Equal(expected, CdtUtils.Cw(i));
 
     [Fact]
     public void LocatePointTriangle_Inside()
@@ -70,7 +72,7 @@ public sealed class TriangleUtilsTests
         var v1 = new V2d<double>(0, 0);
         var v2 = new V2d<double>(1, 0);
         var v3 = new V2d<double>(0, 1);
-        Assert.Equal(PtTriLocation.Inside, TriangleUtils.LocatePointTriangle(p, v1, v2, v3));
+        Assert.Equal(PtTriLocation.Inside, CdtUtils.LocatePointTriangle(p, v1, v2, v3));
     }
 
     [Fact]
@@ -80,7 +82,7 @@ public sealed class TriangleUtilsTests
         var v1 = new V2d<double>(0, 0);
         var v2 = new V2d<double>(1, 0);
         var v3 = new V2d<double>(0, 1);
-        Assert.Equal(PtTriLocation.Outside, TriangleUtils.LocatePointTriangle(p, v1, v2, v3));
+        Assert.Equal(PtTriLocation.Outside, CdtUtils.LocatePointTriangle(p, v1, v2, v3));
     }
 
     [Fact]
@@ -91,8 +93,8 @@ public sealed class TriangleUtilsTests
         var v1 = new V2d<double>(0, 0);
         var v2 = new V2d<double>(1, 0);
         var v3 = new V2d<double>(0, 1);
-        var loc = TriangleUtils.LocatePointTriangle(p, v1, v2, v3);
-        Assert.True(TriangleUtils.IsOnEdge(loc));
+        var loc = CdtUtils.LocatePointTriangle(p, v1, v2, v3);
+        Assert.True(CdtUtils.IsOnEdge(loc));
     }
 
     [Fact]
@@ -102,7 +104,7 @@ public sealed class TriangleUtilsTests
         var v1 = new V2d<double>(0, 0);
         var v2 = new V2d<double>(2, 0);
         var v3 = new V2d<double>(1, 2);
-        Assert.True(TriangleUtils.IsInCircumcircle(p, v1, v2, v3));
+        Assert.True(CdtUtils.IsInCircumcircle(p, v1, v2, v3));
     }
 
     [Fact]
@@ -110,7 +112,7 @@ public sealed class TriangleUtilsTests
     {
         var a = new V2d<double>(0, 0);
         var b = new V2d<double>(3, 4);
-        Assert.Equal(25.0, TriangleUtils.DistanceSquared(a, b), 12);
+        Assert.Equal(25.0, CdtUtils.DistanceSquared(a, b), 12);
     }
 }
 
@@ -142,3 +144,4 @@ public sealed class EdgeTests
         Assert.Contains(new Edge(2, 1), set);
     }
 }
+
