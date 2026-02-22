@@ -134,15 +134,7 @@ public readonly struct Edge : IEquatable<Edge>
     public override bool Equals(object? obj) => obj is Edge e && Equals(e);
 
     /// <inheritdoc/>
-    public override int GetHashCode()
-    {
-        // V1 <= V2 is guaranteed by the constructor. Vertex indices are non-negative
-        // in normal usage; the (uint) cast handles any sign bit correctly via
-        // two's-complement bit patterns, preserving the equality contract.
-        // Pack two ints into a ulong, then fold the halves.
-        ulong packed = ((ulong)(uint)V1 << 32) | (uint)V2;
-        return unchecked((int)(uint)(packed ^ (packed >> 32)));
-    }
+    public override int GetHashCode() => HashCode.Combine(V1, V2);
 
     /// <inheritdoc/>
     public static bool operator ==(Edge a, Edge b) => a.Equals(b);
