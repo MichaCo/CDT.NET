@@ -4,6 +4,7 @@
 
 using System.Numerics;
 using System.Runtime.CompilerServices;
+using static CDT.TriangleUtils;
 
 namespace CDT;
 
@@ -375,11 +376,9 @@ public sealed class Triangulation<T>
         int count = _vertices.Count - superGeomVertCount;
         var indices = new int[count];
         for (int i = 0; i < count; i++) { indices[i] = superGeomVertCount + i; }
-        // Matches C++ detail::random_shuffle which uses SplitMix64(state=0) fresh per call.
-        ulong state = 0UL;
         for (int i = count - 1; i > 0; i--)
         {
-            int j = (int)(SplitMix64(ref state) % (ulong)(i + 1));
+            int j = Random.Shared.Next(i + 1);
             (indices[i], indices[j]) = (indices[j], indices[i]);
         }
         foreach (int iV in indices) { InsertVertex(iV); }
@@ -393,8 +392,6 @@ public sealed class Triangulation<T>
         var indices = new int[vertexCount];
         for (int i = 0; i < vertexCount; i++) { indices[i] = superGeomVertCount + i; }
 
-        // Matches C++ insertVertices_KDTreeBFS: BFS with portable_nth_element and
-        // box updated from the actual split-vertex coordinate at each level.
         var queue = new Queue<(int lo, int hi, T boxMinX, T boxMinY, T boxMaxX, T boxMaxY, int parent)>();
         queue.Enqueue((0, vertexCount, box.Min.X, box.Min.Y, box.Max.X, box.Max.Y, 0));
 
@@ -427,175 +424,34 @@ public sealed class Triangulation<T>
     }
 
     // -------------------------------------------------------------------------
-    // nth_element — port of LLVM's portable_nth_element (matches C++ CDT exactly)
+    // nth_element — O(n) average quickselect for spatial BFS partitioning
     // -------------------------------------------------------------------------
 
     /// <summary>
-    /// Port of LLVM libcxx <c>nth_element</c> used by the C++ CDT for
-    /// <c>insertVertices_KDTreeBFS</c>. Rearranges <paramref name="arr"/>
-    /// in [<paramref name="lo"/>, <paramref name="hi"/>) so the element at
-    /// position <paramref name="nth"/> is the one that would be there after a
-    /// full sort; elements before it are ≤ it and elements after are ≥ it.
-    /// Tie-breaking matches C++ because the algorithm is identical.
+    /// Rearranges <paramref name="arr"/> in [<paramref name="lo"/>, <paramref name="hi"/>)
+    /// so the element at position <paramref name="nth"/> is the one that would be there
+    /// after a full sort; elements before it are ≤ it and elements after are ≥ it.
     /// </summary>
     private static void NthElement(int[] arr, int lo, int nth, int hi, Comparison<int> cmp)
     {
-        int first = lo, last = hi;
-        while (true)
+        while (lo < hi - 1)
         {
-            if (nth == last) { return; }
-            int len = last - first;
-            switch (len)
+            // Pivot: middle element avoids worst-case on sorted input
+            int mid = lo + (hi - lo) / 2;
+            (arr[mid], arr[hi - 1]) = (arr[hi - 1], arr[mid]);
+            int store = lo;
+            for (int i = lo; i < hi - 1; i++)
             {
-                case 0: case 1: return;
-                case 2:
-                    if (cmp(arr[last - 1], arr[first]) < 0) { (arr[first], arr[last - 1]) = (arr[last - 1], arr[first]); }
-                    return;
-                case 3:
-                    NthSort3(arr, first, first + 1, last - 1, cmp);
-                    return;
-            }
-            if (len <= 7) { NthSelectionSort(arr, first, last, cmp); return; }
-
-            int m = first + len / 2;
-            int lm1 = last - 1;
-            uint nSwaps = NthSort3(arr, first, m, lm1, cmp);
-
-            int i = first, j = lm1;
-
-            if (cmp(arr[i], arr[m]) >= 0)   // !comp(*i, *m)
-            {
-                while (true)
+                if (cmp(arr[i], arr[hi - 1]) < 0)
                 {
-                    --j;
-                    if (i == j)
-                    {
-                        ++i;
-                        j = last;
-                        if (cmp(arr[first], arr[--j]) >= 0)   // !comp(*first, *(last-1))
-                        {
-                            while (true)
-                            {
-                                if (i == j) { return; }
-                                if (cmp(arr[first], arr[i]) < 0)
-                                {
-                                    (arr[i], arr[j]) = (arr[j], arr[i]);
-                                    ++nSwaps;
-                                    ++i;
-                                    break;
-                                }
-                                ++i;
-                            }
-                        }
-                        if (i == j) { return; }
-                        while (true)
-                        {
-                            while (cmp(arr[first], arr[i]) >= 0) { ++i; }
-                            do { --j; } while (cmp(arr[first], arr[j]) < 0);
-                            if (i >= j) { break; }
-                            (arr[i], arr[j]) = (arr[j], arr[i]);
-                            ++nSwaps;
-                            ++i;
-                        }
-                        if (nth < i) { return; }
-                        first = i;
-                        goto ContinueOuter;
-                    }
-                    if (cmp(arr[j], arr[m]) < 0)
-                    {
-                        (arr[i], arr[j]) = (arr[j], arr[i]);
-                        ++nSwaps;
-                        break;
-                    }
+                    (arr[store], arr[i]) = (arr[i], arr[store]);
+                    store++;
                 }
             }
-
-            ++i;
-            if (i < j)
-            {
-                while (true)
-                {
-                    while (cmp(arr[i], arr[m]) < 0) { ++i; }
-                    do { --j; } while (cmp(arr[j], arr[m]) >= 0);
-                    if (i >= j) { break; }
-                    (arr[i], arr[j]) = (arr[j], arr[i]);
-                    ++nSwaps;
-                    if (m == i) { m = j; }
-                    ++i;
-                }
-            }
-
-            if (i != m && cmp(arr[m], arr[i]) < 0)
-            {
-                (arr[i], arr[m]) = (arr[m], arr[i]);
-                ++nSwaps;
-            }
-
-            if (nth == i) { return; }
-
-            if (nSwaps == 0)
-            {
-                if (nth < i)
-                {
-                    int ck = m = first;
-                    while (++ck != i)
-                    {
-                        if (cmp(arr[ck], arr[m]) < 0) { goto NotSorted; }
-                        m = ck;
-                    }
-                    return;
-                }
-                else
-                {
-                    int ck = m = i;
-                    while (++ck != last)
-                    {
-                        if (cmp(arr[ck], arr[m]) < 0) { goto NotSorted; }
-                        m = ck;
-                    }
-                    return;
-                }
-            }
-
-        NotSorted:
-            if (nth < i) { last = i; }
-            else { first = i + 1; }
-        ContinueOuter:;
-        }
-    }
-
-    /// <summary>Sorts three elements at positions x, y, z — port of LLVM sort3.</summary>
-    private static uint NthSort3(int[] arr, int x, int y, int z, Comparison<int> cmp)
-    {
-        uint r = 0;
-        if (cmp(arr[y], arr[x]) >= 0)    // !c(*y, *x): x <= y
-        {
-            if (cmp(arr[z], arr[y]) >= 0) { return r; }   // y <= z: done
-            (arr[y], arr[z]) = (arr[z], arr[y]); r = 1;
-            if (cmp(arr[y], arr[x]) < 0) { (arr[x], arr[y]) = (arr[y], arr[x]); r = 2; }
-            return r;
-        }
-        if (cmp(arr[z], arr[y]) < 0)    // x > y, y > z
-        {
-            (arr[x], arr[z]) = (arr[z], arr[x]); r = 1; return r;
-        }
-        // x > y, y <= z
-        (arr[x], arr[y]) = (arr[y], arr[x]); r = 1;
-        if (cmp(arr[z], arr[y]) < 0) { (arr[y], arr[z]) = (arr[z], arr[y]); r = 2; }
-        return r;
-    }
-
-    /// <summary>Selection sort for small ranges — port of LLVM selection_sort.</summary>
-    private static void NthSelectionSort(int[] arr, int first, int last, Comparison<int> cmp)
-    {
-        for (int i = first; i < last - 1; i++)
-        {
-            int minIdx = i;
-            for (int k = i + 1; k < last; k++)
-            {
-                if (cmp(arr[k], arr[minIdx]) < 0) { minIdx = k; }
-            }
-            if (minIdx != i) { (arr[i], arr[minIdx]) = (arr[minIdx], arr[i]); }
+            (arr[store], arr[hi - 1]) = (arr[hi - 1], arr[store]);
+            if (store < nth) lo = store + 1;
+            else if (store > nth) hi = store;
+            else return;
         }
     }
 
@@ -703,13 +559,11 @@ public sealed class Triangulation<T>
     private int WalkTriangles(int startVertex, V2d<T> pos)
     {
         int currTri = _vertTris[startVertex];
-        // SplitMix64 with state=0, fresh per call — matches C++ detail::SplitMix64RandGen.
-        ulong prngState = 0UL;
         for (int guard = 0; guard < 1_000_000; guard++)
         {
             var t = _triangles[currTri];
             bool found = true;
-            int offset = (int)(SplitMix64(ref prngState) % 3UL);
+            int offset = guard % 3;
             for (int i = 0; i < 3; i++)
             {
                 int idx = (i + offset) % 3;
@@ -728,20 +582,6 @@ public sealed class Triangulation<T>
         }
         // Walk did not converge (very degenerate triangulation) — let caller fall back.
         return currTri;
-    }
-
-    /// <summary>
-    /// SplitMix64 PRNG — direct port of C++ <c>detail::SplitMix64RandGen::operator()</c>.
-    /// Initial state 0 and a fresh instance per <see cref="WalkTriangles"/> call
-    /// matches C++ behavior exactly.
-    /// </summary>
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static ulong SplitMix64(ref ulong state)
-    {
-        ulong z = (state += 0x9e3779b97f4a7c15UL);
-        z = (z ^ (z >> 30)) * 0xbf58476d1ce4e5b9UL;
-        z = (z ^ (z >> 27)) * 0x94d049bb133111ebUL;
-        return z ^ (z >> 31);
     }
 
     // -------------------------------------------------------------------------
@@ -1617,126 +1457,8 @@ public sealed class Triangulation<T>
 
     private void TryAddVertexToLocator(int iV)
     {
-        // Only add to the locator if it's already initialized (matches C++ behavior)
+        // Only add to the locator if it's already initialized
         _kdTree?.Insert(iV, _vertices);
-    }
-
-    // -------------------------------------------------------------------------
-    // Type-specific geometric operations (dispatched via T)
-    // -------------------------------------------------------------------------
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static PtTriLocation LocatePointTriangle(V2d<T> p, V2d<T> v1, V2d<T> v2, V2d<T> v3)
-    {
-        // We cast to the correct type dispatch at compile time
-        if (typeof(T) == typeof(double))
-        {
-            return TriangleUtils.LocatePointTriangle(
-                Unsafe.As<V2d<T>, V2d<double>>(ref Unsafe.AsRef(in p)),
-                Unsafe.As<V2d<T>, V2d<double>>(ref Unsafe.AsRef(in v1)),
-                Unsafe.As<V2d<T>, V2d<double>>(ref Unsafe.AsRef(in v2)),
-                Unsafe.As<V2d<T>, V2d<double>>(ref Unsafe.AsRef(in v3)));
-        }
-        else
-        {
-            return TriangleUtils.LocatePointTriangle(
-                Unsafe.As<V2d<T>, V2d<float>>(ref Unsafe.AsRef(in p)),
-                Unsafe.As<V2d<T>, V2d<float>>(ref Unsafe.AsRef(in v1)),
-                Unsafe.As<V2d<T>, V2d<float>>(ref Unsafe.AsRef(in v2)),
-                Unsafe.As<V2d<T>, V2d<float>>(ref Unsafe.AsRef(in v3)));
-        }
-    }
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static PtLineLocation LocatePointLine(V2d<T> p, V2d<T> v1, V2d<T> v2, T tolerance = default)
-    {
-        if (typeof(T) == typeof(double))
-        {
-            return TriangleUtils.LocatePointLine(
-                Unsafe.As<V2d<T>, V2d<double>>(ref Unsafe.AsRef(in p)),
-                Unsafe.As<V2d<T>, V2d<double>>(ref Unsafe.AsRef(in v1)),
-                Unsafe.As<V2d<T>, V2d<double>>(ref Unsafe.AsRef(in v2)),
-                Unsafe.As<T, double>(ref Unsafe.AsRef(in tolerance)));
-        }
-        else
-        {
-            return TriangleUtils.LocatePointLine(
-                Unsafe.As<V2d<T>, V2d<float>>(ref Unsafe.AsRef(in p)),
-                Unsafe.As<V2d<T>, V2d<float>>(ref Unsafe.AsRef(in v1)),
-                Unsafe.As<V2d<T>, V2d<float>>(ref Unsafe.AsRef(in v2)),
-                Unsafe.As<T, float>(ref Unsafe.AsRef(in tolerance)));
-        }
-    }
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static T Orient2D(V2d<T> p, V2d<T> v1, V2d<T> v2)
-    {
-        if (typeof(T) == typeof(double))
-        {
-            double r = Predicates.Orient2D(
-                Unsafe.As<T, double>(ref Unsafe.AsRef(in v1.X)),
-                Unsafe.As<T, double>(ref Unsafe.AsRef(in v1.Y)),
-                Unsafe.As<T, double>(ref Unsafe.AsRef(in v2.X)),
-                Unsafe.As<T, double>(ref Unsafe.AsRef(in v2.Y)),
-                Unsafe.As<T, double>(ref Unsafe.AsRef(in p.X)),
-                Unsafe.As<T, double>(ref Unsafe.AsRef(in p.Y)));
-            return Unsafe.As<double, T>(ref r);
-        }
-        else
-        {
-            float r = Predicates.Orient2D(
-                Unsafe.As<T, float>(ref Unsafe.AsRef(in v1.X)),
-                Unsafe.As<T, float>(ref Unsafe.AsRef(in v1.Y)),
-                Unsafe.As<T, float>(ref Unsafe.AsRef(in v2.X)),
-                Unsafe.As<T, float>(ref Unsafe.AsRef(in v2.Y)),
-                Unsafe.As<T, float>(ref Unsafe.AsRef(in p.X)),
-                Unsafe.As<T, float>(ref Unsafe.AsRef(in p.Y)));
-            return Unsafe.As<float, T>(ref r);
-        }
-    }
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static bool IsInCircumcircle(V2d<T> p, V2d<T> v1, V2d<T> v2, V2d<T> v3)
-    {
-        if (typeof(T) == typeof(double))
-        {
-            return TriangleUtils.IsInCircumcircle(
-                Unsafe.As<V2d<T>, V2d<double>>(ref Unsafe.AsRef(in p)),
-                Unsafe.As<V2d<T>, V2d<double>>(ref Unsafe.AsRef(in v1)),
-                Unsafe.As<V2d<T>, V2d<double>>(ref Unsafe.AsRef(in v2)),
-                Unsafe.As<V2d<T>, V2d<double>>(ref Unsafe.AsRef(in v3)));
-        }
-        else
-        {
-            return TriangleUtils.IsInCircumcircle(
-                Unsafe.As<V2d<T>, V2d<float>>(ref Unsafe.AsRef(in p)),
-                Unsafe.As<V2d<T>, V2d<float>>(ref Unsafe.AsRef(in v1)),
-                Unsafe.As<V2d<T>, V2d<float>>(ref Unsafe.AsRef(in v2)),
-                Unsafe.As<V2d<T>, V2d<float>>(ref Unsafe.AsRef(in v3)));
-        }
-    }
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private V2d<T> IntersectionPosition(V2d<T> a, V2d<T> b, V2d<T> c, V2d<T> d)
-    {
-        if (typeof(T) == typeof(double))
-        {
-            var r = TriangleUtils.IntersectionPosition(
-                Unsafe.As<V2d<T>, V2d<double>>(ref Unsafe.AsRef(in a)),
-                Unsafe.As<V2d<T>, V2d<double>>(ref Unsafe.AsRef(in b)),
-                Unsafe.As<V2d<T>, V2d<double>>(ref Unsafe.AsRef(in c)),
-                Unsafe.As<V2d<T>, V2d<double>>(ref Unsafe.AsRef(in d)));
-            return Unsafe.As<V2d<double>, V2d<T>>(ref r);
-        }
-        else
-        {
-            var r = TriangleUtils.IntersectionPosition(
-                Unsafe.As<V2d<T>, V2d<float>>(ref Unsafe.AsRef(in a)),
-                Unsafe.As<V2d<T>, V2d<float>>(ref Unsafe.AsRef(in b)),
-                Unsafe.As<V2d<T>, V2d<float>>(ref Unsafe.AsRef(in c)),
-                Unsafe.As<V2d<T>, V2d<float>>(ref Unsafe.AsRef(in d)));
-            return Unsafe.As<V2d<float>, V2d<T>>(ref r);
-        }
     }
 
     // -------------------------------------------------------------------------
