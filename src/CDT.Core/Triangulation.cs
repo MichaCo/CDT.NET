@@ -153,6 +153,16 @@ public sealed class Triangulation<T>
 
         bool isFirstInsertion = _kdTree == null && _vertices.Count == 0;
 
+        // Pre-allocate backing arrays once we know the incoming vertex count.
+        // Euler's formula: a planar triangulation of N points has ~2N triangles.
+        if (isFirstInsertion)
+        {
+            int n = newVertices.Count;
+            _vertices.EnsureCapacity(n + Indices.SuperTriangleVertexCount);
+            _vertTris.EnsureCapacity(n + Indices.SuperTriangleVertexCount);
+            _triangles.EnsureCapacity(2 * n + 4);
+        }
+
         // Build bounding box of new vertices
         var box = new Box2d<T>();
         box.Envelop(newVertices);
@@ -722,40 +732,46 @@ public sealed class Triangulation<T>
         n4 = tOpo.GetNeighbor(CdtUtils.Cw(oi));
     }
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private bool IsFlipNeeded(int iV1, int iV2, int iV3, int iV4)
     {
-        if (_fixedEdges.Contains(new Edge(iV2, iV4))) return false;
-
-        var v1 = _vertices[iV1];
-        var v2 = _vertices[iV2];
-        var v3 = _vertices[iV3];
-        var v4 = _vertices[iV4];
+        // Skip HashSet lookup when there are no fixed edges (pure vertex-insertion path).
+        if (_fixedEdges.Count > 0 && _fixedEdges.Contains(new Edge(iV2, iV4))) return false;
 
         if (_superGeomType == SuperGeometryType.SuperTriangle)
         {
+            // Fast path: no super-triangle vertex involved (the common case after the
+            // first few insertions). Avoids four index comparisons and four vertex loads.
             int st = Indices.SuperTriangleVertexCount;
-            if (iV1 < st)
+            if (iV1 < st || iV2 < st || iV3 < st || iV4 < st)
             {
+                var v1 = _vertices[iV1];
+                var v2 = _vertices[iV2];
+                var v3 = _vertices[iV3];
+                var v4 = _vertices[iV4];
+                if (iV1 < st)
+                {
+                    if (iV2 < st)
+                        return LocatePointLine(v2, v3, v4) == LocatePointLine(v1, v3, v4);
+                    if (iV4 < st)
+                        return LocatePointLine(v4, v2, v3) == LocatePointLine(v1, v2, v3);
+                    return false;
+                }
+                if (iV3 < st)
+                {
+                    if (iV2 < st)
+                        return LocatePointLine(v2, v1, v4) == LocatePointLine(v3, v1, v4);
+                    if (iV4 < st)
+                        return LocatePointLine(v4, v2, v1) == LocatePointLine(v3, v2, v1);
+                    return false;
+                }
                 if (iV2 < st)
                     return LocatePointLine(v2, v3, v4) == LocatePointLine(v1, v3, v4);
                 if (iV4 < st)
                     return LocatePointLine(v4, v2, v3) == LocatePointLine(v1, v2, v3);
-                return false;
             }
-            if (iV3 < st)
-            {
-                if (iV2 < st)
-                    return LocatePointLine(v2, v1, v4) == LocatePointLine(v3, v1, v4);
-                if (iV4 < st)
-                    return LocatePointLine(v4, v2, v1) == LocatePointLine(v3, v2, v1);
-                return false;
-            }
-            if (iV2 < st)
-                return LocatePointLine(v2, v3, v4) == LocatePointLine(v1, v3, v4);
-            if (iV4 < st)
-                return LocatePointLine(v4, v2, v3) == LocatePointLine(v1, v2, v3);
         }
-        return IsInCircumcircle(v1, v2, v3, v4);
+        return IsInCircumcircle(_vertices[iV1], _vertices[iV2], _vertices[iV3], _vertices[iV4]);
     }
 
     private void FlipEdge(
