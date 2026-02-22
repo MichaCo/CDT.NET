@@ -4,13 +4,6 @@
 //
 // Geometric predicates — port of Lenthe/Shewchuk adaptive predicates from
 // artem-ogre/CDT (predicates.h, predicates::adaptive namespace).
-//
-// Key design rules matching the C++ template:
-//   - float inputs: ALL intermediate differences and products computed in float
-//     first (no premature promotion). Fallback uses decimal exact expansion sign.
-//   - double inputs: full 3-stage adaptive predicates using Shewchuk/Lenthe
-//     floating-point expansion arithmetic (all in native double).
-//     Matches C++ artem-ogre/CDT predicates.h exactly on any IEEE 754 platform.
 
 using System.Runtime.CompilerServices;
 
@@ -37,10 +30,7 @@ internal static class Predicates
     // Orient2D
     // =========================================================================
 
-    /// <summary>
-    /// Adaptive orient2d for <see cref="double"/>. Matches C++
-    /// <c>predicates::adaptive::orient2d&lt;double&gt;</c> exactly.
-    /// </summary>
+    /// <summary>Adaptive orient2d for <see cref="double"/>.</summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static double Orient2D(
         double ax, double ay, double bx, double by, double cx, double cy)
@@ -112,7 +102,7 @@ internal static class Predicates
 
     /// <summary>
     /// Adaptive orient2d for <see cref="float"/>. All fast-path arithmetic in float.
-    /// Falls back to exact double computation (matching C++).
+    /// Falls back to exact double computation.
     /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static float Orient2D(
@@ -149,10 +139,7 @@ internal static class Predicates
     // InCircle
     // =========================================================================
 
-    /// <summary>
-    /// Adaptive incircle for <see cref="double"/>. Matches C++
-    /// <c>predicates::adaptive::incircle&lt;double&gt;</c> exactly.
-    /// </summary>
+    /// <summary>Adaptive incircle for <see cref="double"/>.</summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static double InCircle(
         double ax, double ay, double bx, double by,
