@@ -18,6 +18,7 @@ jobs:
         os: [windows-latest, ubuntu-latest]
     permissions:
       contents: read
+      pull-requests: write  # needed for sticky-pull-request-comment
 
     steps:
       - name: Checkout
@@ -77,6 +78,13 @@ jobs:
         if: runner.os == 'Windows'
         run: Get-Content coveragereport/SummaryGithub.md >> $env:GITHUB_STEP_SUMMARY
         shell: pwsh
+
+      - name: Add coverage PR comment
+        uses: marocchino/sticky-pull-request-comment@v2
+        if: runner.os == 'Windows' && github.event_name == 'pull_request'
+        with:
+          recreate: true
+          path: coveragereport/SummaryGithub.md
 
       - name: Write coverage to job summary (Linux)
         if: runner.os == 'Linux'
