@@ -430,14 +430,14 @@ public partial class MainWindow : Window
                 workEdges = edges;
             }
 
-            _cdt.InsertVertices(workPts);
+            _cdt.InsertVertices(workPts.ToArray());
 
             if (vLimit >= _loadedPoints.Count && workEdges.Count > 0)
             {
                 if (conforming)
-                    _cdt.ConformToEdges(workEdges);
+                    _cdt.ConformToEdges(workEdges.ToArray());
                 else
-                    _cdt.InsertEdges(workEdges);
+                    _cdt.InsertEdges(workEdges.ToArray());
             }
         }
         catch (Exception ex)
