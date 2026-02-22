@@ -4,6 +4,7 @@
 
 using System.Globalization;
 using System.IO;
+using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
@@ -430,14 +431,14 @@ public partial class MainWindow : Window
                 workEdges = edges;
             }
 
-            _cdt.InsertVertices(workPts);
+            _cdt.InsertVertices(CollectionsMarshal.AsSpan(workPts));
 
             if (vLimit >= _loadedPoints.Count && workEdges.Count > 0)
             {
                 if (conforming)
-                    _cdt.ConformToEdges(workEdges);
+                    _cdt.ConformToEdges(CollectionsMarshal.AsSpan(workEdges));
                 else
-                    _cdt.InsertEdges(workEdges);
+                    _cdt.InsertEdges(CollectionsMarshal.AsSpan(workEdges));
             }
         }
         catch (Exception ex)
