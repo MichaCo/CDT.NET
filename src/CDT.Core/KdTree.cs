@@ -23,15 +23,26 @@ internal sealed class KdTree<T>
 
     private enum SplitDir { X, Y }
 
+    [System.Runtime.CompilerServices.InlineArray(NumVerticesInLeaf)]
+    private struct LeafBuffer { private int _element; }
+
+    private struct LeafData
+    {
+        public LeafBuffer Items;
+        public int Count;
+        public void Add(int v) => Items[Count++] = v;
+        public int this[int i] => Items[i];
+    }
+
     private struct Node
     {
         // children[0] == children[1] => leaf
         public int Child0, Child1;
-        public List<int>? Data; // non-null only for leaf nodes
+        public LeafData Data;   // always present; Count==0 for inner nodes
 
         public bool IsLeaf => Child0 == Child1;
 
-        public static Node NewLeaf() => new() { Child0 = 0, Child1 = 0, Data = new List<int>(NumVerticesInLeaf) };
+        public static Node NewLeaf() => new() { Child0 = 0, Child1 = 0 };
     }
 
     private readonly struct NearestTask
@@ -103,7 +114,7 @@ internal sealed class KdTree<T>
             if (n.IsLeaf)
             {
                 // Add point if capacity not reached
-                if (n.Data!.Count < NumVerticesInLeaf)
+                if (n.Data.Count < NumVerticesInLeaf)
                 {
                     n.Data.Add(iPoint);
                     return;
@@ -123,13 +134,14 @@ internal sealed class KdTree<T>
                 n.Child0 = c1; n.Child1 = c2;
 
                 // Move existing points to children
-                foreach (int ip in n.Data!)
+                for (int _ip = 0; _ip < n.Data.Count; _ip++)
                 {
+                    int ip = n.Data[_ip];
                     T cx = points[ip].X, cy = points[ip].Y;
                     int target = WhichChild(cx, cy, mid, dir);
-                    _nodes[target == 0 ? c1 : c2].Data!.Add(ip);
+                    ref Node child = ref CollectionsMarshal.AsSpan(_nodes)[target == 0 ? c1 : c2];
+                    child.Data.Add(ip);
                 }
-                n.Data = null; // inner node – no data list needed
             }
 
             T midVal = GetMid(minX, minY, maxX, maxY, dir);
@@ -166,8 +178,9 @@ internal sealed class KdTree<T>
             ref Node n = ref CollectionsMarshal.AsSpan(_nodes)[task.NodeIndex];
             if (n.IsLeaf)
             {
-                foreach (int ip in n.Data!)
+                for (int i = 0; i < n.Data.Count; i++)
                 {
+                    int ip = n.Data[i];
                     T dx = points[ip].X - qx;
                     T dy = points[ip].Y - qy;
                     T d2 = dx * dx + dy * dy;
@@ -314,10 +327,11 @@ internal sealed class KdTree<T>
     private void InitializeRootBox(IReadOnlyList<V2d<T>> points)
     {
         Node rootNode = _nodes[_root];
-        T mxn = points[rootNode.Data![0]].X, myn = points[rootNode.Data[0]].Y;
+        T mxn = points[rootNode.Data[0]].X, myn = points[rootNode.Data[0]].Y;
         T mxx = mxn, mxy = myn;
-        foreach (int ip in rootNode.Data)
+        for (int i = 0; i < rootNode.Data.Count; i++)
         {
+            int ip = rootNode.Data[i];
             T cx = points[ip].X, cy = points[ip].Y;
             if (cx < mxn) mxn = cx;
             if (cx > mxx) mxx = cx;
