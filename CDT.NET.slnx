@@ -2,6 +2,12 @@
   <Folder Name="/benchmark/">
     <Project Path="benchmark/CDT.Benchmarks/CDT.Benchmarks.csproj" />
   </Folder>
+  <Folder Name="/Solution Items/">
+    <File Path=".editorconfig" />
+    <File Path=".gitignore" />
+    <File Path="LICENSE" />
+    <File Path="README.md" />
+  </Folder>
   <Folder Name="/src/">
     <Project Path="src/CDT.Core/CDT.Core.csproj" />
   </Folder>
