@@ -401,7 +401,7 @@ public static class CdtUtils
             double r = PredicatesAdaptive.Orient2d(
                 Unsafe.As<T, double>(ref Unsafe.AsRef(in v1.X)), Unsafe.As<T, double>(ref Unsafe.AsRef(in v1.Y)),
                 Unsafe.As<T, double>(ref Unsafe.AsRef(in v2.X)), Unsafe.As<T, double>(ref Unsafe.AsRef(in v2.Y)),
-                Unsafe.As<T, double>(ref Unsafe.AsRef(in p.X)),  Unsafe.As<T, double>(ref Unsafe.AsRef(in p.Y)));
+                Unsafe.As<T, double>(ref Unsafe.AsRef(in p.X)), Unsafe.As<T, double>(ref Unsafe.AsRef(in p.Y)));
             return Unsafe.As<double, T>(ref r);
         }
         else
@@ -409,7 +409,7 @@ public static class CdtUtils
             float r = PredicatesAdaptive.Orient2d(
                 Unsafe.As<T, float>(ref Unsafe.AsRef(in v1.X)), Unsafe.As<T, float>(ref Unsafe.AsRef(in v1.Y)),
                 Unsafe.As<T, float>(ref Unsafe.AsRef(in v2.X)), Unsafe.As<T, float>(ref Unsafe.AsRef(in v2.Y)),
-                Unsafe.As<T, float>(ref Unsafe.AsRef(in p.X)),  Unsafe.As<T, float>(ref Unsafe.AsRef(in p.Y)));
+                Unsafe.As<T, float>(ref Unsafe.AsRef(in p.X)), Unsafe.As<T, float>(ref Unsafe.AsRef(in p.Y)));
             return Unsafe.As<float, T>(ref r);
         }
     }
@@ -532,13 +532,13 @@ public static class CdtUtils
                 Unsafe.As<T, double>(ref Unsafe.AsRef(in v1.X)), Unsafe.As<T, double>(ref Unsafe.AsRef(in v1.Y)),
                 Unsafe.As<T, double>(ref Unsafe.AsRef(in v2.X)), Unsafe.As<T, double>(ref Unsafe.AsRef(in v2.Y)),
                 Unsafe.As<T, double>(ref Unsafe.AsRef(in v3.X)), Unsafe.As<T, double>(ref Unsafe.AsRef(in v3.Y)),
-                Unsafe.As<T, double>(ref Unsafe.AsRef(in p.X)),  Unsafe.As<T, double>(ref Unsafe.AsRef(in p.Y))) > 0.0;
+                Unsafe.As<T, double>(ref Unsafe.AsRef(in p.X)), Unsafe.As<T, double>(ref Unsafe.AsRef(in p.Y))) > 0.0;
         else
             return PredicatesAdaptive.InCircle(
                 Unsafe.As<T, float>(ref Unsafe.AsRef(in v1.X)), Unsafe.As<T, float>(ref Unsafe.AsRef(in v1.Y)),
                 Unsafe.As<T, float>(ref Unsafe.AsRef(in v2.X)), Unsafe.As<T, float>(ref Unsafe.AsRef(in v2.Y)),
                 Unsafe.As<T, float>(ref Unsafe.AsRef(in v3.X)), Unsafe.As<T, float>(ref Unsafe.AsRef(in v3.Y)),
-                Unsafe.As<T, float>(ref Unsafe.AsRef(in p.X)),  Unsafe.As<T, float>(ref Unsafe.AsRef(in p.Y))) > 0f;
+                Unsafe.As<T, float>(ref Unsafe.AsRef(in p.X)), Unsafe.As<T, float>(ref Unsafe.AsRef(in p.Y))) > 0f;
     }
 
     /// <summary>
