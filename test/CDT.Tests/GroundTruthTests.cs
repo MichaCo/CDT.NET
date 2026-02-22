@@ -711,13 +711,14 @@ public sealed class KdTreeTests
     public void KdTree_NearestPoint_ExactMatch()
     {
         var pts = MakeGrid(); // 100 points on 10×10 grid
+        var ptsSpan = System.Runtime.InteropServices.CollectionsMarshal.AsSpan(pts);
         var kd = new KdTree<double>(0, 0, 9, 9);
-        for (int i = 0; i < pts.Count; i++) kd.Insert(i, pts.ToArray());
+        for (int i = 0; i < pts.Count; i++) kd.Insert(i, ptsSpan);
 
         // Querying the exact location of each grid point returns that point
         for (int i = 0; i < pts.Count; i++)
         {
-            int nearest = kd.Nearest(pts[i].X, pts[i].Y, pts.ToArray());
+            int nearest = kd.Nearest(pts[i].X, pts[i].Y, ptsSpan);
             Assert.Equal(i, nearest);
         }
     }
@@ -730,12 +731,13 @@ public sealed class KdTreeTests
         {
             new(0, 0), new(1, 0), new(1, 1), new(0, 1),
         };
+        var ptsSpan = System.Runtime.InteropServices.CollectionsMarshal.AsSpan(pts);
         var kd = new KdTree<double>(0, 0, 1, 1);
-        for (int i = 0; i < pts.Count; i++) kd.Insert(i, pts.ToArray());
+        for (int i = 0; i < pts.Count; i++) kd.Insert(i, ptsSpan);
 
         // Query the centre (0.5, 0.5): all corners are equidistant,
         // but a specific one will be returned; just verify it's a corner.
-        int nearest = kd.Nearest(0.5, 0.5, pts.ToArray());
+        int nearest = kd.Nearest(0.5, 0.5, ptsSpan);
         Assert.InRange(nearest, 0, 3);
     }
 
@@ -744,9 +746,10 @@ public sealed class KdTreeTests
     {
         // Single point
         var pts = new List<V2d<double>> { new(3.0, 7.0) };
+        var ptsSpan = System.Runtime.InteropServices.CollectionsMarshal.AsSpan(pts);
         var kd = new KdTree<double>();
-        kd.Insert(0, pts.ToArray());
-        Assert.Equal(0, kd.Nearest(100.0, 200.0, pts.ToArray()));
+        kd.Insert(0, ptsSpan);
+        Assert.Equal(0, kd.Nearest(100.0, 200.0, ptsSpan));
     }
 
     [Fact]
@@ -757,15 +760,16 @@ public sealed class KdTreeTests
         for (int i = 0; i < 100; i++)
             pts.Add(new V2d<double>(rng.NextDouble() * 100, rng.NextDouble() * 100));
 
+        var ptsSpan = System.Runtime.InteropServices.CollectionsMarshal.AsSpan(pts);
         var kd = new KdTree<double>(0, 0, 100, 100);
-        for (int i = 0; i < pts.Count; i++) kd.Insert(i, pts.ToArray());
+        for (int i = 0; i < pts.Count; i++) kd.Insert(i, ptsSpan);
 
         for (int q = 0; q < 1000; q++)
         {
             double qx = rng.NextDouble() * 100;
             double qy = rng.NextDouble() * 100;
 
-            int kdNearest = kd.Nearest(qx, qy, pts.ToArray());
+            int kdNearest = kd.Nearest(qx, qy, ptsSpan);
 
             // Brute-force verification
             int bruteNearest = 0;
@@ -792,12 +796,13 @@ public sealed class KdTreeTests
             new(10.0, 10.0), // 2
             new(0.0, 10.0),  // 3
         };
+        var ptsSpan = System.Runtime.InteropServices.CollectionsMarshal.AsSpan(pts);
         var kd = new KdTree<double>(0, 0, 10, 10);
-        for (int i = 0; i < pts.Count; i++) kd.Insert(i, pts.ToArray());
+        for (int i = 0; i < pts.Count; i++) kd.Insert(i, ptsSpan);
 
-        Assert.Equal(0, kd.Nearest(1.0, 1.0, pts.ToArray()));
-        Assert.Equal(1, kd.Nearest(9.0, 1.0, pts.ToArray()));
-        Assert.Equal(2, kd.Nearest(9.0, 9.0, pts.ToArray()));
-        Assert.Equal(3, kd.Nearest(1.0, 9.0, pts.ToArray()));
+        Assert.Equal(0, kd.Nearest(1.0, 1.0, ptsSpan));
+        Assert.Equal(1, kd.Nearest(9.0, 1.0, ptsSpan));
+        Assert.Equal(2, kd.Nearest(9.0, 9.0, ptsSpan));
+        Assert.Equal(3, kd.Nearest(1.0, 9.0, ptsSpan));
     }
 }

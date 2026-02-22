@@ -115,9 +115,6 @@ public sealed class Triangulation<T>
     // Frozen set for fast read-only Contains() on fixed edges
     private FrozenSet<Edge>? _frozenFixedEdges;
 
-    // Returns the frozen set when available, falling back to the live HashSet
-    private IReadOnlySet<Edge> FixedEdgeSet => _frozenFixedEdges ?? (IReadOnlySet<Edge>)_fixedEdges;
-
     // -------------------------------------------------------------------------
     // Construction
     // -------------------------------------------------------------------------
@@ -319,9 +316,13 @@ public sealed class Triangulation<T>
     public bool IsFinalized => _vertTris.Count == 0 && _vertices.Count > 0;
 
     /// <summary>
-    /// Freezes the fixed-edge set for faster read-only Contains() queries.
-    /// Call after all InsertEdges/ConformToEdges calls are complete.
-    /// Invalidated automatically on any subsequent edge mutation.
+    /// Freezes (snapshots) the current fixed-edge set for faster read-only Contains() queries.
+    /// Call this only after all <see cref="InsertEdges"/> / <see cref="ConformToEdges"/> operations
+    /// and any other edge mutations are complete, or call it again after such mutations to
+    /// refresh the snapshot. The frozen set is automatically cleared whenever an edge is added,
+    /// removed, or split, but is <b>not</b> automatically refreshed after finalization
+    /// (<see cref="EraseSuperTriangle"/> / <see cref="EraseOuterTriangles"/> /
+    /// <see cref="EraseOuterTrianglesAndHoles"/>).
     /// </summary>
     public void FreezeFixedEdges() => _frozenFixedEdges = _fixedEdges.ToFrozenSet();
 
@@ -781,7 +782,12 @@ public sealed class Triangulation<T>
     private bool IsFlipNeeded(int iV1, int iV2, int iV3, int iV4)
     {
         // Skip HashSet lookup when there are no fixed edges (pure vertex-insertion path).
-        if (_fixedEdges.Count > 0 && FixedEdgeSet.Contains(new Edge(iV2, iV4))) return false;
+        if (_fixedEdges.Count > 0)
+        {
+            var e24 = new Edge(iV2, iV4);
+            if (_frozenFixedEdges != null ? _frozenFixedEdges.Contains(e24) : _fixedEdges.Contains(e24))
+                return false;
+        }
 
         var v1 = _vertices[iV1];
         var v2 = _vertices[iV2];
@@ -1365,7 +1371,7 @@ public sealed class Triangulation<T>
     private HashSet<int> GrowToBoundary(Stack<int> seeds)
     {
         var tris = CollectionsMarshal.AsSpan(_triangles);
-        var fixedEdgeSet = FixedEdgeSet;
+        var frozen = _frozenFixedEdges;
         var traversed = new HashSet<int>();
         while (seeds.Count > 0)
         {
@@ -1377,7 +1383,7 @@ public sealed class Triangulation<T>
                 int va = t.GetVertex(CdtUtils.Ccw(i));
                 int vb = t.GetVertex(CdtUtils.Cw(i));
                 var opEdge = new Edge(va, vb);
-                if (fixedEdgeSet.Contains(opEdge)) continue;
+                if (frozen != null ? frozen.Contains(opEdge) : _fixedEdges.Contains(opEdge)) continue;
                 int iN = t.GetNeighbor(CdtUtils.OpposedNeighborIndex(i));
                 if (iN != Indices.NoNeighbor && !traversed.Contains(iN))
                     seeds.Push(iN);
@@ -1394,6 +1400,7 @@ public sealed class Triangulation<T>
         {
             _vertices.RemoveRange(0, Indices.SuperTriangleVertexCount);
             RemapEdgesNoSuperTriangle(_fixedEdges);
+            _frozenFixedEdges = null; // fixed-edge keys shifted; frozen snapshot is now stale
             RemapEdgesNoSuperTriangle(_overlapCount);
             RemapEdgesNoSuperTriangle(_pieceToOriginals);
         }
@@ -1509,7 +1516,7 @@ public sealed class Triangulation<T>
         Stack<int> seeds, ushort layerDepth, ushort[] triDepths, Dictionary<int, ushort> behindBoundary)
     {
         var tris = CollectionsMarshal.AsSpan(_triangles);
-        var fixedEdgeSet = FixedEdgeSet;
+        var frozen = _frozenFixedEdges;
         while (seeds.Count > 0)
         {
             int iT = seeds.Pop();
@@ -1525,7 +1532,7 @@ public sealed class Triangulation<T>
                 int iN = t.GetNeighbor(CdtUtils.OpposedNeighborIndex(i));
                 if (iN == Indices.NoNeighbor || triDepths[iN] <= layerDepth) continue;
 
-                if (fixedEdgeSet.Contains(opEdge))
+                if (frozen != null ? frozen.Contains(opEdge) : _fixedEdges.Contains(opEdge))
                 {
                     ushort nextDepth = layerDepth;
                     if (_overlapCount.TryGetValue(opEdge, out ushort ov))
