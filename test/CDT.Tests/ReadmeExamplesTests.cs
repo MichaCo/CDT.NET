@@ -20,7 +20,7 @@ public sealed class ReadmeExamplesTests
         };
 
         var cdt = new Triangulation<double>();
-        cdt.InsertVertices(vertices);
+        cdt.InsertVertices(vertices.ToArray());
         cdt.EraseSuperTriangle(); // produces convex hull
 
         Assert.True(TopologyVerifier.VerifyTopology(cdt));
@@ -46,8 +46,8 @@ public sealed class ReadmeExamplesTests
         };
 
         var cdt = new Triangulation<double>();
-        cdt.InsertVertices(vertices);
-        cdt.InsertEdges(edges);
+        cdt.InsertVertices(vertices.ToArray());
+        cdt.InsertEdges(edges.ToArray());
         cdt.EraseOuterTriangles(); // removes everything outside the boundary
 
         Assert.True(TopologyVerifier.VerifyTopology(cdt));
@@ -78,8 +78,8 @@ public sealed class ReadmeExamplesTests
         };
 
         var cdt = new Triangulation<double>();
-        cdt.InsertVertices(vertices);
-        cdt.InsertEdges(edges);
+        cdt.InsertVertices(vertices.ToArray());
+        cdt.InsertEdges(edges.ToArray());
         cdt.EraseOuterTrianglesAndHoles(); // removes outer AND fills holes automatically
 
         Assert.True(TopologyVerifier.VerifyTopology(cdt));
@@ -104,8 +104,8 @@ public sealed class ReadmeExamplesTests
         };
 
         var cdt = new Triangulation<double>();
-        cdt.InsertVertices(vertices);
-        cdt.ConformToEdges(edges); // may split edges and add new points
+        cdt.InsertVertices(vertices.ToArray());
+        cdt.ConformToEdges(edges.ToArray()); // may split edges and add new points
         cdt.EraseOuterTriangles();
 
         Assert.True(TopologyVerifier.VerifyTopology(cdt));
@@ -142,8 +142,8 @@ public sealed class ReadmeExamplesTests
         Assert.Equal(new Edge(1, 2), edges[1]);
 
         var cdt = new Triangulation<double>();
-        cdt.InsertVertices(vertices);
-        cdt.InsertEdges(edges.Where(e => e.V1 != e.V2).ToList()); // skip degenerate self-edge
+        cdt.InsertVertices(vertices.ToArray());
+        cdt.InsertEdges(edges.Where(e => e.V1 != e.V2).ToArray()); // skip degenerate self-edge
         cdt.EraseSuperTriangle();
 
         Assert.True(TopologyVerifier.VerifyTopology(cdt));
@@ -161,7 +161,7 @@ public sealed class ReadmeExamplesTests
         cdt.EraseSuperTriangle();
 
         // Extract all unique edges from every triangle
-        HashSet<Edge> allEdges = CdtUtils.ExtractEdgesFromTriangles(cdt.Triangles);
+        HashSet<Edge> allEdges = CdtUtils.ExtractEdgesFromTriangles(cdt.Triangles.ToArray());
 
         // A single triangle has exactly 3 edges
         Assert.Equal(3, allEdges.Count);
@@ -191,8 +191,8 @@ public sealed class ReadmeExamplesTests
             IntersectingConstraintEdges.TryResolve,
             0.0);
 
-        cdt.InsertVertices(vertices);
-        cdt.InsertEdges(edges);
+        cdt.InsertVertices(vertices.ToArray());
+        cdt.InsertEdges(edges.ToArray());
         cdt.EraseSuperTriangle();
 
         Assert.True(TopologyVerifier.VerifyTopology(cdt));

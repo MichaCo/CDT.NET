@@ -259,15 +259,15 @@ public abstract class ConstraintTriangulationGroundTruthTestsBase<T>
             ExpectedFileName(inputFile, isTyped, order, strategy, section));
 
         var (verts, edges) = TestInputReader.ReadInput<T>(inputPath);
-        Assert.Empty(CdtUtils.FindDuplicates(verts).Duplicates);
+        Assert.Empty(CdtUtils.FindDuplicates(verts.ToArray()).Duplicates);
 
         var cdt = new Triangulation<T>(
             GroundTruthHelpers.ParseOrder(order),
             GroundTruthHelpers.ParseStrategy(strategy),
             T.Zero);
 
-        cdt.InsertVertices(verts);
-        cdt.InsertEdges(edges);
+        cdt.InsertVertices(verts.ToArray());
+        cdt.InsertEdges(edges.ToArray());
         postInsert(cdt);
         Assert.True(TopologyVerifier.VerifyTopology(cdt));
         GroundTruthHelpers.AssertTopologyMatchesFile(cdt, expectedPath);
@@ -361,8 +361,8 @@ public abstract class ConformingTriangulationGroundTruthTestsBase<T>
             IntersectingConstraintEdges.NotAllowed,
             T.Zero);
 
-        cdt.InsertVertices(verts);
-        cdt.ConformToEdges(edges);
+        cdt.InsertVertices(verts.ToArray());
+        cdt.ConformToEdges(edges.ToArray());
         cdt.EraseOuterTrianglesAndHoles();
 
         Assert.True(TopologyVerifier.VerifyTopology(cdt));
@@ -413,8 +413,8 @@ public abstract class CrossingEdgesGroundTruthTestsBase<T>
             VertexInsertionOrder.Auto,
             IntersectingConstraintEdges.TryResolve,
             T.Zero);
-        cdt.InsertVertices(verts);
-        cdt.InsertEdges(edges);
+        cdt.InsertVertices(verts.ToArray());
+        cdt.InsertEdges(edges.ToArray());
 
         Assert.True(TopologyVerifier.VerifyTopology(cdt));
         GroundTruthHelpers.AssertTopologyMatchesFile(
@@ -435,8 +435,8 @@ public abstract class CrossingEdgesGroundTruthTestsBase<T>
             VertexInsertionOrder.Auto,
             IntersectingConstraintEdges.TryResolve,
             T.Zero);
-        cdt.InsertVertices(verts);
-        cdt.ConformToEdges(edges);
+        cdt.InsertVertices(verts.ToArray());
+        cdt.ConformToEdges(edges.ToArray());
 
         Assert.True(TopologyVerifier.VerifyTopology(cdt));
         GroundTruthHelpers.AssertTopologyMatchesFile(
@@ -476,8 +476,8 @@ public sealed class SpecialConstraintGroundTruthTests_Double
             VertexInsertionOrder.Auto,
             IntersectingConstraintEdges.TryResolve,
             0.0);
-        cdt.InsertVertices(verts);
-        cdt.InsertEdges(edges);
+        cdt.InsertVertices(verts.ToArray());
+        cdt.InsertEdges(edges.ToArray());
 
         Assert.True(TopologyVerifier.VerifyTopology(cdt));
         GroundTruthHelpers.AssertTopologyMatchesFile(
@@ -494,8 +494,8 @@ public sealed class SpecialConstraintGroundTruthTests_Double
             VertexInsertionOrder.AsProvided,
             IntersectingConstraintEdges.TryResolve,
             0.0);
-        cdt.InsertVertices(verts);
-        cdt.InsertEdges(edges);
+        cdt.InsertVertices(verts.ToArray());
+        cdt.InsertEdges(edges.ToArray());
 
         Assert.True(TopologyVerifier.VerifyTopology(cdt));
         GroundTruthHelpers.AssertTopologyMatchesFile(
@@ -552,7 +552,7 @@ public sealed class RegressionTests
             VertexInsertionOrder.Auto,
             IntersectingConstraintEdges.NotAllowed,
             0.0);
-        cdt.InsertVertices(pts);
+        cdt.InsertVertices(pts.ToArray());
         cdt.InsertEdges([new Edge(0, 1)]);
         Assert.True(TopologyVerifier.VerifyTopology(cdt));
     }
@@ -577,7 +577,7 @@ public sealed class RegressionTests
             VertexInsertionOrder.Auto,
             IntersectingConstraintEdges.NotAllowed,
             0.0);
-        cdt.InsertVertices(pts);
+        cdt.InsertVertices(pts.ToArray());
         cdt.InsertEdges([new Edge(0, 8)]);
         Assert.True(TopologyVerifier.VerifyTopology(cdt));
     }
@@ -633,8 +633,8 @@ public sealed class RegressionTests
         var (verts, edges) = TestInputReader.ReadInput<double>(
             GroundTruthHelpers.InputPath("debug2.txt"));
         var cdt = new Triangulation<double>();
-        cdt.InsertVertices(verts);
-        cdt.InsertEdges(edges);
+        cdt.InsertVertices(verts.ToArray());
+        cdt.InsertEdges(edges.ToArray());
         Assert.True(TopologyVerifier.VerifyTopology(cdt));
     }
 
@@ -646,8 +646,8 @@ public sealed class RegressionTests
         var (verts, edges) = TestInputReader.ReadInput<double>(
             GroundTruthHelpers.InputPath("hanging3.txt"));
         var cdt = new Triangulation<double>();
-        cdt.InsertVertices(verts);
-        cdt.InsertEdges(edges);
+        cdt.InsertVertices(verts.ToArray());
+        cdt.InsertEdges(edges.ToArray());
         Assert.True(TopologyVerifier.VerifyTopology(cdt));
     }
 
@@ -666,8 +666,8 @@ public sealed class RegressionTests
             VertexInsertionOrder.Auto,
             IntersectingConstraintEdges.NotAllowed,
             0.0);
-        cdtSingle.InsertVertices(verts);
-        cdtSingle.InsertEdges(edges);
+        cdtSingle.InsertVertices(verts.ToArray());
+        cdtSingle.InsertEdges(edges.ToArray());
         cdtSingle.EraseOuterTrianglesAndHoles();
 
         // Two-batch: insert vertices in two halves, then edges
@@ -676,9 +676,9 @@ public sealed class RegressionTests
             VertexInsertionOrder.Auto,
             IntersectingConstraintEdges.NotAllowed,
             0.0);
-        cdtTwo.InsertVertices(verts.Take(half).ToList());
-        cdtTwo.InsertVertices(verts.Skip(half).ToList());
-        cdtTwo.InsertEdges(edges);
+        cdtTwo.InsertVertices(verts.Take(half).ToArray());
+        cdtTwo.InsertVertices(verts.Skip(half).ToArray());
+        cdtTwo.InsertEdges(edges.ToArray());
         cdtTwo.EraseOuterTrianglesAndHoles();
 
         // Both should be topologically valid
@@ -712,12 +712,12 @@ public sealed class KdTreeTests
     {
         var pts = MakeGrid(); // 100 points on 10×10 grid
         var kd = new KdTree<double>(0, 0, 9, 9);
-        for (int i = 0; i < pts.Count; i++) kd.Insert(i, pts);
+        for (int i = 0; i < pts.Count; i++) kd.Insert(i, pts.ToArray());
 
         // Querying the exact location of each grid point returns that point
         for (int i = 0; i < pts.Count; i++)
         {
-            int nearest = kd.Nearest(pts[i].X, pts[i].Y, pts);
+            int nearest = kd.Nearest(pts[i].X, pts[i].Y, pts.ToArray());
             Assert.Equal(i, nearest);
         }
     }
@@ -731,11 +731,11 @@ public sealed class KdTreeTests
             new(0, 0), new(1, 0), new(1, 1), new(0, 1),
         };
         var kd = new KdTree<double>(0, 0, 1, 1);
-        for (int i = 0; i < pts.Count; i++) kd.Insert(i, pts);
+        for (int i = 0; i < pts.Count; i++) kd.Insert(i, pts.ToArray());
 
         // Query the centre (0.5, 0.5): all corners are equidistant,
         // but a specific one will be returned; just verify it's a corner.
-        int nearest = kd.Nearest(0.5, 0.5, pts);
+        int nearest = kd.Nearest(0.5, 0.5, pts.ToArray());
         Assert.InRange(nearest, 0, 3);
     }
 
@@ -745,8 +745,8 @@ public sealed class KdTreeTests
         // Single point
         var pts = new List<V2d<double>> { new(3.0, 7.0) };
         var kd = new KdTree<double>();
-        kd.Insert(0, pts);
-        Assert.Equal(0, kd.Nearest(100.0, 200.0, pts));
+        kd.Insert(0, pts.ToArray());
+        Assert.Equal(0, kd.Nearest(100.0, 200.0, pts.ToArray()));
     }
 
     [Fact]
@@ -758,14 +758,14 @@ public sealed class KdTreeTests
             pts.Add(new V2d<double>(rng.NextDouble() * 100, rng.NextDouble() * 100));
 
         var kd = new KdTree<double>(0, 0, 100, 100);
-        for (int i = 0; i < pts.Count; i++) kd.Insert(i, pts);
+        for (int i = 0; i < pts.Count; i++) kd.Insert(i, pts.ToArray());
 
         for (int q = 0; q < 1000; q++)
         {
             double qx = rng.NextDouble() * 100;
             double qy = rng.NextDouble() * 100;
 
-            int kdNearest = kd.Nearest(qx, qy, pts);
+            int kdNearest = kd.Nearest(qx, qy, pts.ToArray());
 
             // Brute-force verification
             int bruteNearest = 0;
@@ -793,11 +793,11 @@ public sealed class KdTreeTests
             new(0.0, 10.0),  // 3
         };
         var kd = new KdTree<double>(0, 0, 10, 10);
-        for (int i = 0; i < pts.Count; i++) kd.Insert(i, pts);
+        for (int i = 0; i < pts.Count; i++) kd.Insert(i, pts.ToArray());
 
-        Assert.Equal(0, kd.Nearest(1.0, 1.0, pts));
-        Assert.Equal(1, kd.Nearest(9.0, 1.0, pts));
-        Assert.Equal(2, kd.Nearest(9.0, 9.0, pts));
-        Assert.Equal(3, kd.Nearest(1.0, 9.0, pts));
+        Assert.Equal(0, kd.Nearest(1.0, 1.0, pts.ToArray()));
+        Assert.Equal(1, kd.Nearest(9.0, 1.0, pts.ToArray()));
+        Assert.Equal(2, kd.Nearest(9.0, 9.0, pts.ToArray()));
+        Assert.Equal(3, kd.Nearest(1.0, 9.0, pts.ToArray()));
     }
 }

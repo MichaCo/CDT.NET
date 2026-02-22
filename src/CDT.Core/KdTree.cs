@@ -82,7 +82,7 @@ internal sealed class KdTree<T>
     public int Size => _size;
 
     /// <summary>Inserts point at index <paramref name="iPoint"/> from the external buffer.</summary>
-    public void Insert(int iPoint, IReadOnlyList<V2d<T>> points)
+    public void Insert(int iPoint, ReadOnlySpan<V2d<T>> points)
     {
         _size++;
         T px = points[iPoint].X, py = points[iPoint].Y;
@@ -149,7 +149,7 @@ internal sealed class KdTree<T>
     }
 
     /// <summary>Finds the nearest point to <paramref name="points"/> in the external buffer.</summary>
-    public int Nearest(T qx, T qy, IReadOnlyList<V2d<T>> points)
+    public int Nearest(T qx, T qy, ReadOnlySpan<V2d<T>> points)
     {
         int resultIdx = 0;
         T minDistSq = T.MaxValue;
@@ -311,7 +311,7 @@ internal sealed class KdTree<T>
         _root = newRoot;
     }
 
-    private void InitializeRootBox(IReadOnlyList<V2d<T>> points)
+    private void InitializeRootBox(ReadOnlySpan<V2d<T>> points)
     {
         Node rootNode = _nodes[_root];
         T mxn = points[rootNode.Data![0]].X, myn = points[rootNode.Data[0]].Y;

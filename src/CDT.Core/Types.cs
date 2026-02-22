@@ -78,7 +78,7 @@ public struct Box2d<T>
     public void Envelop(V2d<T> p) => Envelop(p.X, p.Y);
 
     /// <summary>Expands the box to include all given points.</summary>
-    public void Envelop(IReadOnlyList<V2d<T>> points)
+    public void Envelop(ReadOnlySpan<V2d<T>> points)
     {
         foreach (var p in points)
         {
@@ -87,7 +87,7 @@ public struct Box2d<T>
     }
 
     /// <summary>Creates a box containing all the given points.</summary>
-    public static Box2d<T> Of(IReadOnlyList<V2d<T>> points)
+    public static Box2d<T> Of(ReadOnlySpan<V2d<T>> points)
     {
         var box = new Box2d<T>();
         box.Envelop(points);
