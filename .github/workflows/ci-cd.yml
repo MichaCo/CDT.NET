@@ -120,7 +120,7 @@ jobs:
         shell: pwsh
         run: |
           $version = "${{ github.ref_name }}" -replace '^v', ''
-          dotnet pack src/CDT.Core/CDT.Core.csproj --no-build -c Release -o \artifacts /p:Version=$version
+          dotnet pack src/CDT.Core/CDT.Core.csproj --no-build -c Release -o "${{ github.workspace }}\artifacts" /p:Version=$version
 
       - name: NuGet login
         uses: NuGet/login@v1
