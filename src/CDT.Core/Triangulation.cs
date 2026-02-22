@@ -115,6 +115,9 @@ public sealed class Triangulation<T>
     // Frozen set for fast read-only Contains() on fixed edges
     private FrozenSet<Edge>? _frozenFixedEdges;
 
+    // Returns the frozen set when available, falling back to the live HashSet
+    private IReadOnlySet<Edge> FixedEdgeSet => _frozenFixedEdges ?? (IReadOnlySet<Edge>)_fixedEdges;
+
     // -------------------------------------------------------------------------
     // Construction
     // -------------------------------------------------------------------------
@@ -778,7 +781,7 @@ public sealed class Triangulation<T>
     private bool IsFlipNeeded(int iV1, int iV2, int iV3, int iV4)
     {
         // Skip HashSet lookup when there are no fixed edges (pure vertex-insertion path).
-        if (_fixedEdges.Count > 0 && (_frozenFixedEdges is { } f ? f : (IReadOnlySet<Edge>)_fixedEdges).Contains(new Edge(iV2, iV4))) return false;
+        if (_fixedEdges.Count > 0 && FixedEdgeSet.Contains(new Edge(iV2, iV4))) return false;
 
         var v1 = _vertices[iV1];
         var v2 = _vertices[iV2];
@@ -1362,7 +1365,7 @@ public sealed class Triangulation<T>
     private HashSet<int> GrowToBoundary(Stack<int> seeds)
     {
         var tris = CollectionsMarshal.AsSpan(_triangles);
-        var fixedEdgeSet = _frozenFixedEdges is { } f ? f : (IReadOnlySet<Edge>)_fixedEdges;
+        var fixedEdgeSet = FixedEdgeSet;
         var traversed = new HashSet<int>();
         while (seeds.Count > 0)
         {
@@ -1506,7 +1509,7 @@ public sealed class Triangulation<T>
         Stack<int> seeds, ushort layerDepth, ushort[] triDepths, Dictionary<int, ushort> behindBoundary)
     {
         var tris = CollectionsMarshal.AsSpan(_triangles);
-        var fixedEdgeSet = _frozenFixedEdges is { } f ? f : (IReadOnlySet<Edge>)_fixedEdges;
+        var fixedEdgeSet = FixedEdgeSet;
         while (seeds.Count > 0)
         {
             int iT = seeds.Pop();
