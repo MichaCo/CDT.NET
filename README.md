@@ -78,4 +78,4 @@ dotnet run -c Release --project benchmark/CDT.Benchmarks
 
 ## License
 
-[MIT License](LICENSE)
+[Mozilla Public License Version 2.0](LICENSE)
