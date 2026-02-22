@@ -61,7 +61,7 @@ public static class PredicatesAdaptive
     /// zero if collinear, or a negative value if to the right.
     /// </returns>
     /// <seealso cref="PredicatesExact.Orient2d(double, double, double, double, double, double)"/>
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    [MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]  // opt-15: aggressive JIT opt for fast-path Stage A
     [SkipLocalsInit]
     public static double Orient2d(
         double ax, double ay, double bx, double by, double cx, double cy)
@@ -195,7 +195,7 @@ public static class PredicatesAdaptive
     /// zero if on, or a negative value if outside.
     /// </returns>
     /// <seealso cref="PredicatesExact.InCircle(double, double, double, double, double, double, double, double)"/>
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]  // opt-16: keep only AggressiveInlining (AggressiveOptimization inflated the Stage-B frame and hurt Stage-A)
     [SkipLocalsInit]
     public static double InCircle(
         double ax, double ay, double bx, double by,
@@ -390,6 +390,7 @@ public static class PredicatesAdaptive
     /// Matches Lenthe <c>ExpansionBase::TwoTwoDiff</c>.
     /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    [SkipLocalsInit]  // opt-11: x0..x3 are all unconditionally computed before conditional write
     internal static int TwoTwoDiff(double ax, double by, double ay, double bx, Span<double> h)
     {
         double axby1 = ax * by;
@@ -419,6 +420,8 @@ public static class PredicatesAdaptive
     /// Matches Lenthe <c>ExpansionBase::ScaleExpansion</c>.
     /// Output has up to <c>2*elen</c> terms.
     /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]  // opt-7, opt-18
+    [SkipLocalsInit]  // opt-8: locals (hIdx, Q, hh, Ti, ti, Qi) are all written before read
     internal static int ScaleExpansion(Span<double> e, int elen, double b, Span<double> h)
     {
         if (elen == 0 || b == 0.0)
@@ -427,24 +430,30 @@ public static class PredicatesAdaptive
         }
 
         var (bHi, bLo) = Split(b);
-        double Q = e[0] * b;
-        double hh = DekkersPresplit(e[0], bHi, bLo, Q);
+
+        // opt-9: bounds-check-free loop via ref locals
+        ref double eRef = ref MemoryMarshal.GetReference(e);
+        ref double hRef = ref MemoryMarshal.GetReference(h);
+
+        double Q = Unsafe.Add(ref eRef, 0) * b;
+        double hh = DekkersPresplit(Unsafe.Add(ref eRef, 0), bHi, bLo, Q);
         int hIdx = 0;
-        if (hh != 0.0) { h[hIdx++] = hh; }
+        if (hh != 0.0) { Unsafe.Add(ref hRef, hIdx++) = hh; }
 
         for (int i = 1; i < elen; i++)
         {
-            double Ti = e[i] * b;
-            double ti = DekkersPresplit(e[i], bHi, bLo, Ti);
+            double ei = Unsafe.Add(ref eRef, i);
+            double Ti = ei * b;
+            double ti = DekkersPresplit(ei, bHi, bLo, Ti);
             double Qi = Q + ti;
             hh = PlusTail(Q, ti, Qi);
-            if (hh != 0.0) { h[hIdx++] = hh; }
+            if (hh != 0.0) { Unsafe.Add(ref hRef, hIdx++) = hh; }
             Q = Ti + Qi;
             hh = FastPlusTail(Ti, Qi, Q);
-            if (hh != 0.0) { h[hIdx++] = hh; }
+            if (hh != 0.0) { Unsafe.Add(ref hRef, hIdx++) = hh; }
         }
 
-        if (Q != 0.0) { h[hIdx++] = Q; }
+        if (Q != 0.0) { Unsafe.Add(ref hRef, hIdx++) = Q; }
         return hIdx;
     }
 
@@ -465,7 +474,7 @@ public static class PredicatesAdaptive
     /// Computes <c>e*s*s + e*t*t</c> as an expansion (two ScaleExpansion calls each, then sum).
     /// Max output: 32 terms for 4-term input (used for InCircle Stage B lift terms).
     /// </summary>
-    [SkipLocalsInit]
+    [SkipLocalsInit]  // keep SkipLocalsInit; remove AggressiveInlining (inlining 3× into AdaptiveInCircle bloats Stage-A JIT frame)
     internal static int ScaleExpansionSum(Span<double> e, int elen, double s, double t, Span<double> h)
     {
         Span<double> es = stackalloc double[8];
@@ -485,52 +494,121 @@ public static class PredicatesAdaptive
     /// Merge-then-accumulate two expansions. Matches Lenthe <c>ExpansionBase::ExpansionSum</c>:
     /// std::merge by |value| (stable), then sequential grow-expansion accumulation.
     /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveOptimization)]  // opt-20: aggressive JIT optimization for this hot method
     [SkipLocalsInit]
     internal static int ExpansionSum(Span<double> e, int elen, Span<double> f, int flen, Span<double> h)
     {
         if (elen == 0 && flen == 0) { return 0; }
-        if (elen == 0) { f[..flen].CopyTo(h); return flen; }
-        if (flen == 0) { e[..elen].CopyTo(h); return elen; }
+        if (elen == 0)
+        {
+            // opt-5: Unsafe.CopyBlockUnaligned replaces Span.CopyTo (eliminates Memmove call overhead)
+            Unsafe.CopyBlockUnaligned(
+                ref Unsafe.As<double, byte>(ref MemoryMarshal.GetReference(h)),
+                ref Unsafe.As<double, byte>(ref MemoryMarshal.GetReference(f)),
+                (uint)(flen * sizeof(double)));
+            return flen;
+        }
+        if (flen == 0)
+        {
+            // opt-5: same as above for flen==0 fast path
+            Unsafe.CopyBlockUnaligned(
+                ref Unsafe.As<double, byte>(ref MemoryMarshal.GetReference(h)),
+                ref Unsafe.As<double, byte>(ref MemoryMarshal.GetReference(e)),
+                (uint)(elen * sizeof(double)));
+            return elen;
+        }
 
         int total = elen + flen;
 
-        // Merge sorted by |value| into temporary buffer.
-        // Maximum merged size for InCircle Stage D is 192+192=384 ≤ 400, so
-        // the stackalloc path is always taken for that call site.
-        Span<double> merged = total <= 400 ? stackalloc double[400] : new double[total];
+        // opt-1: Tiered stackalloc — allocate only as much as the actual input size requires.
+        // Using unsafe ref to the first element lets us hold the pointer across the branches
+        // without assigning the Span itself to an outer variable (which Roslyn disallows for
+        // stack-allocated Spans that might escape).
+        if (total <= 16)
+        {
+            Span<double> merged16 = stackalloc double[16];
+            return ExpansionSumCore(e, elen, f, flen, h, merged16);
+        }
+        if (total <= 64)
+        {
+            Span<double> merged64 = stackalloc double[64];
+            return ExpansionSumCore(e, elen, f, flen, h, merged64);
+        }
+        if (total <= 400)
+        {
+            Span<double> merged400 = stackalloc double[400];
+            return ExpansionSumCore(e, elen, f, flen, h, merged400);
+        }
+        return ExpansionSumCore(e, elen, f, flen, h, new double[total]);
+    }
+
+    // opt-2, opt-3, opt-4: Core merge+accumulate logic — receives a pre-sized scratch buffer.
+    // All span accesses use MemoryMarshal.GetReference + Unsafe.Add to eliminate bounds checks.
+    [MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
+    private static int ExpansionSumCore(
+        Span<double> e, int elen, Span<double> f, int flen, Span<double> h, Span<double> merged)
+    {
+        ref double eRef = ref MemoryMarshal.GetReference(e);
+        ref double fRef = ref MemoryMarshal.GetReference(f);
+        ref double mRef = ref MemoryMarshal.GetReference(merged);
+
         int ei = 0, fi = 0, mi = 0;
         while (ei < elen && fi < flen)
         {
-            if (Math.Abs(f[fi]) < Math.Abs(e[ei]))
+            double eVal = Unsafe.Add(ref eRef, ei);
+            double fVal = Unsafe.Add(ref fRef, fi);
+            if (Math.Abs(fVal) < Math.Abs(eVal))
             {
-                merged[mi++] = f[fi++];
+                Unsafe.Add(ref mRef, mi++) = fVal;
+                fi++;
             }
             else
             {
-                merged[mi++] = e[ei++];
+                Unsafe.Add(ref mRef, mi++) = eVal;
+                ei++;
             }
         }
 
-        while (ei < elen) { merged[mi++] = e[ei++]; }
-        while (fi < flen) { merged[mi++] = f[fi++]; }
+        // opt-4: tail copy loops → Unsafe.CopyBlockUnaligned
+        if (ei < elen)
+        {
+            int rem = elen - ei;
+            Unsafe.CopyBlockUnaligned(
+                ref Unsafe.As<double, byte>(ref Unsafe.Add(ref mRef, mi)),
+                ref Unsafe.As<double, byte>(ref Unsafe.Add(ref eRef, ei)),
+                (uint)(rem * sizeof(double)));
+            mi += rem;
+        }
+        if (fi < flen)
+        {
+            int rem = flen - fi;
+            Unsafe.CopyBlockUnaligned(
+                ref Unsafe.As<double, byte>(ref Unsafe.Add(ref mRef, mi)),
+                ref Unsafe.As<double, byte>(ref Unsafe.Add(ref fRef, fi)),
+                (uint)(rem * sizeof(double)));
+            mi += rem;
+        }
 
-        // Sequential accumulation
+        // opt-3: bounds-check-free accumulation loop using ref locals
+        ref double hRef = ref MemoryMarshal.GetReference(h);
         int hIdx = 0;
-        double Q = merged[0];
-        double Qnew = merged[1] + Q;
-        double hh = FastPlusTail(merged[1], Q, Qnew);
+        double Q = Unsafe.Add(ref mRef, 0);
+        double m1 = Unsafe.Add(ref mRef, 1);
+        double Qnew = m1 + Q;
+        double hh = FastPlusTail(m1, Q, Qnew);
         Q = Qnew;
-        if (hh != 0.0) { h[hIdx++] = hh; }
+        if (hh != 0.0) { Unsafe.Add(ref hRef, hIdx++) = hh; }
 
         for (int g = 2; g < mi; g++)
         {
-            Qnew = Q + merged[g];
-            hh = PlusTail(Q, merged[g], Qnew);
+            double mg = Unsafe.Add(ref mRef, g);
+            Qnew = Q + mg;
+            hh = PlusTail(Q, mg, Qnew);
             Q = Qnew;
-            if (hh != 0.0) { h[hIdx++] = hh; }
+            if (hh != 0.0) { Unsafe.Add(ref hRef, hIdx++) = hh; }
         }
 
-        if (Q != 0.0) { h[hIdx++] = Q; }
+        if (Q != 0.0) { Unsafe.Add(ref hRef, hIdx++) = Q; }
         return hIdx;
     }
 
@@ -545,16 +623,19 @@ public static class PredicatesAdaptive
             for (; i <= elen - 4; i += 4)
                 acc = Vector256.Add(acc, Vector256.LoadUnsafe(ref eRef, (nuint)i));
             double sum = Vector256.Sum(acc);
+            // opt-13: bounds-check-free scalar tail using Unsafe.Add
             for (; i < elen; i++) sum += Unsafe.Add(ref eRef, i);
             return sum;
         }
 
+        // opt-13: bounds-check-free scalar loop
+        ref double sRef = ref MemoryMarshal.GetReference(e);
         double s = 0.0;
-        for (int i = 0; i < elen; i++) { s += e[i]; }
+        for (int i = 0; i < elen; i++) { s += Unsafe.Add(ref sRef, i); }
         return s;
     }
 
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    [MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]  // opt-12
     internal static double MostSignificant(Span<double> e, int elen)
     {
         for (int i = elen - 1; i >= 0; i--)
@@ -564,7 +645,7 @@ public static class PredicatesAdaptive
         return 0.0;
     }
 
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    [MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]  // opt-14
     internal static void NegateInto(Span<double> src, int len, Span<double> dst)
     {
         if (Vector256.IsHardwareAccelerated && len >= 4)

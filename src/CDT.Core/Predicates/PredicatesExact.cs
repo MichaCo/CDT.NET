@@ -43,6 +43,7 @@ public static class PredicatesExact
     /// zero if collinear, or a negative value if to the right.
     /// </returns>
     /// <seealso cref="PredicatesAdaptive.Orient2d(double, double, double, double, double, double)"/>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]  // opt-17: inline into Adaptive.Orient2d Stage D
     [SkipLocalsInit]
     public static double Orient2d(
         double ax, double ay, double bx, double by, double cx, double cy)
@@ -125,6 +126,7 @@ public static class PredicatesExact
     /// zero if on, or a negative value if outside.
     /// </returns>
     /// <seealso cref="PredicatesAdaptive.InCircle(double, double, double, double, double, double, double, double)"/>
+    [MethodImpl(MethodImplOptions.AggressiveOptimization)]  // opt-20: aggressive JIT opt for this hot method
     [SkipLocalsInit]
     public static double InCircle(
         double ax, double ay, double bx, double by,
@@ -176,22 +178,22 @@ public static class PredicatesExact
         int adetLen = PredicatesAdaptive.ScaleExpansionSum(bcd, bcdLen, ax, ay, adet);
 
         // bdet = -(cda*bx*bx + cda*by*by)
-        Span<double> bdetPos = stackalloc double[96];
-        int bdetPosLen = PredicatesAdaptive.ScaleExpansionSum(cda, cdaLen, bx, by, bdetPos);
+        // opt-18: eliminate bdetPos[96] by computing ScaleExpansionSum directly into bdet,
+        // then negating in-place. Saves 768 bytes of stack per call.
         Span<double> bdet = stackalloc double[96];
-        PredicatesAdaptive.NegateInto(bdetPos, bdetPosLen, bdet);
-        int bdetLen = bdetPosLen;
+        int bdetLen = PredicatesAdaptive.ScaleExpansionSum(cda, cdaLen, bx, by, bdet);
+        PredicatesAdaptive.NegateInto(bdet, bdetLen, bdet);
 
         // cdet = dab*cx*cx + dab*cy*cy
         Span<double> cdet = stackalloc double[96];
         int cdetLen = PredicatesAdaptive.ScaleExpansionSum(dab, dabLen, cx, cy, cdet);
 
         // ddet = -(abc*dx*dx + abc*dy*dy)
-        Span<double> ddetPos = stackalloc double[96];
-        int ddetPosLen = PredicatesAdaptive.ScaleExpansionSum(abc, abcLen, dx, dy, ddetPos);
+        // opt-19: same as opt-18 — eliminate ddetPos[96] stackalloc with in-place negate.
+        // Saves another 768 bytes of stack per call (total savings: 1 536 bytes).
         Span<double> ddet = stackalloc double[96];
-        PredicatesAdaptive.NegateInto(ddetPos, ddetPosLen, ddet);
-        int ddetLen = ddetPosLen;
+        int ddetLen = PredicatesAdaptive.ScaleExpansionSum(abc, abcLen, dx, dy, ddet);
+        PredicatesAdaptive.NegateInto(ddet, ddetLen, ddet);
 
         // deter = (adet + bdet) + (cdet + ddet)
         Span<double> ab2 = stackalloc double[192];
