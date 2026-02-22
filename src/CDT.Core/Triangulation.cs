@@ -1124,7 +1124,7 @@ public sealed class Triangulation<T>
             var outerEdge = new Edge(b, c);
             int outerTri = outerTris[outerEdge];
             ref var triRef = ref CollectionsMarshal.AsSpan(_triangles)[iT];
-            triRef.N1 = outerTri != Indices.NoNeighbor ? outerTri : Indices.NoNeighbor;
+            triRef.N1 = outerTri;
             if (outerTri != Indices.NoNeighbor)
                 ChangeNeighbor(outerTri, c, b, iT);
             else
@@ -1142,7 +1142,7 @@ public sealed class Triangulation<T>
             var outerEdge = new Edge(c, a);
             int outerTri = outerTris[outerEdge];
             ref var triRef = ref CollectionsMarshal.AsSpan(_triangles)[iT];
-            triRef.N2 = outerTri != Indices.NoNeighbor ? outerTri : Indices.NoNeighbor;
+            triRef.N2 = outerTri;
             if (outerTri != Indices.NoNeighbor)
                 ChangeNeighbor(outerTri, c, a, iT);
             else
@@ -1334,6 +1334,8 @@ public sealed class Triangulation<T>
     // Finalization
     // -------------------------------------------------------------------------
 
+    // Returns _traversedScratch directly to avoid allocation; caller must use
+    // the result immediately and not retain it across further triangulation calls.
     private HashSet<int> GrowToBoundary(Stack<int> seeds)
     {
         _traversedScratch.Clear();

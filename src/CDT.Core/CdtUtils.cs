@@ -114,7 +114,7 @@ public static class CdtUtils
 
     /// <summary>
     /// Removes duplicate vertices from the list in-place using the result from
-    /// <see cref="FindDuplicates{T}"/>.
+    /// <see cref="FindDuplicates{T}(IReadOnlyList{V2d{T}})"/>.
     /// </summary>
     /// <typeparam name="T">Floating-point coordinate type.</typeparam>
     /// <param name="vertices">The vertex list to modify in-place.</param>
@@ -652,8 +652,11 @@ public static class CdtUtils
 }
 
 /// <summary>
-/// Struct key for use in dictionaries to avoid potential boxing of generic <typeparamref name="T"/>
-/// compared to raw tuple keys.
+/// Struct key for use in dictionaries that avoids the overhead of
+/// <see cref="System.ValueTuple{T1,T2}"/>'s equality implementation.
+/// Implementing <see cref="IEquatable{T}"/> allows
+/// <see cref="EqualityComparer{T}.Default"/> to call <c>Equals</c> directly
+/// without virtual dispatch.
 /// </summary>
 internal readonly struct V2dKey<T>(T x, T y) : IEquatable<V2dKey<T>>
     where T : IFloatingPoint<T>
