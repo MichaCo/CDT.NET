@@ -56,12 +56,48 @@ public static class CdtUtils
         int n = vertices.Count;
         var mapping = new int[n];
         var duplicates = new List<int>();
-        var posToIndex = new Dictionary<(T, T), int>(n);
+        var posToIndex = new Dictionary<V2dKey<T>, int>(n);
 
         int iOut = 0;
         for (int iIn = 0; iIn < n; iIn++)
         {
-            var key = (vertices[iIn].X, vertices[iIn].Y);
+            var key = new V2dKey<T>(vertices[iIn].X, vertices[iIn].Y);
+            if (posToIndex.TryGetValue(key, out int existing))
+            {
+                mapping[iIn] = existing;
+                duplicates.Add(iIn);
+            }
+            else
+            {
+                posToIndex[key] = iOut;
+                mapping[iIn] = iOut++;
+            }
+        }
+        return new DuplicatesInfo(mapping, duplicates);
+    }
+
+    /// <summary>
+    /// Finds duplicate vertices (same X and Y) in the given span and returns
+    /// mapping and duplicate index information.
+    /// </summary>
+    /// <typeparam name="T">Floating-point coordinate type.</typeparam>
+    /// <param name="vertices">The vertex span to check for duplicates.</param>
+    /// <returns>
+    /// A <see cref="DuplicatesInfo"/> containing a mapping from each original
+    /// index to its canonical index, and the list of duplicate indices.
+    /// </returns>
+    public static DuplicatesInfo FindDuplicates<T>(ReadOnlySpan<V2d<T>> vertices)
+        where T : IFloatingPoint<T>
+    {
+        int n = vertices.Length;
+        var mapping = new int[n];
+        var duplicates = new List<int>();
+        var posToIndex = new Dictionary<V2dKey<T>, int>(n);
+
+        int iOut = 0;
+        for (int iIn = 0; iIn < n; iIn++)
+        {
+            var key = new V2dKey<T>(vertices[iIn].X, vertices[iIn].Y);
             if (posToIndex.TryGetValue(key, out int existing))
             {
                 mapping[iIn] = existing;
@@ -613,4 +649,19 @@ public static class CdtUtils
         }
         return false;
     }
+}
+
+/// <summary>
+/// Struct key for use in dictionaries to avoid potential boxing of generic <typeparamref name="T"/>
+/// compared to raw tuple keys.
+/// </summary>
+internal readonly struct V2dKey<T>(T x, T y) : IEquatable<V2dKey<T>>
+    where T : IFloatingPoint<T>
+{
+    private readonly T _x = x;
+    private readonly T _y = y;
+
+    public bool Equals(V2dKey<T> other) => _x == other._x && _y == other._y;
+    public override bool Equals(object? obj) => obj is V2dKey<T> k && Equals(k);
+    public override int GetHashCode() => HashCode.Combine(_x, _y);
 }
