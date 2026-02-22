@@ -19,7 +19,7 @@ internal static class BenchmarkInputReader
     /// Reads a CDT input file.
     /// Format: <c>nVerts nEdges\n x y\n … v1 v2\n …</c>
     /// </summary>
-    public static (List<V2d<double>> Vertices, List<Edge> Edges) Read(string fileName)
+    public static (V2d<double>[] Vertices, Edge[] Edges) Read(string fileName)
     {
         var path = Path.Combine(AppContext.BaseDirectory, "inputs", fileName);
 
@@ -31,20 +31,20 @@ internal static class BenchmarkInputReader
         int nVerts = int.Parse(header[0]);
         int nEdges = int.Parse(header[1]);
 
-        var verts = new List<V2d<double>>(nVerts);
+        var verts = new V2d<double>[nVerts];
         for (int i = 0; i < nVerts; i++)
         {
             var tok = sr.ReadLine()!.Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries);
-            verts.Add(new V2d<double>(
+            verts[i] = new V2d<double>(
                 double.Parse(tok[0], System.Globalization.CultureInfo.InvariantCulture),
-                double.Parse(tok[1], System.Globalization.CultureInfo.InvariantCulture)));
+                double.Parse(tok[1], System.Globalization.CultureInfo.InvariantCulture));
         }
 
-        var edges = new List<Edge>(nEdges);
+        var edges = new Edge[nEdges];
         for (int i = 0; i < nEdges; i++)
         {
             var tok = sr.ReadLine()!.Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries);
-            edges.Add(new Edge(int.Parse(tok[0]), int.Parse(tok[1])));
+            edges[i] = new Edge(int.Parse(tok[0]), int.Parse(tok[1]));
         }
 
         return (verts, edges);
@@ -66,8 +66,8 @@ internal static class BenchmarkInputReader
 [ShortRunJob]
 public class ConstrainedSwedenBenchmarks
 {
-    private List<V2d<double>> _vertices = null!;
-    private List<Edge> _edges = null!;
+    private V2d<double>[] _vertices = null!;
+    private Edge[] _edges = null!;
 
     [GlobalSetup]
     public void Setup()
@@ -193,8 +193,8 @@ public class ConstrainedSwedenBenchmarks
 [ShortRunJob]
 public class SmallDatasetBenchmarks
 {
-    private List<V2d<double>> _vertices = null!;
-    private List<Edge> _edges = null!;
+    private V2d<double>[] _vertices = null!;
+    private Edge[] _edges = null!;
 
     [GlobalSetup]
     public void Setup()
@@ -236,7 +236,7 @@ public class SmallDatasetBenchmarks
     [BenchmarkCategory("FloatVsDouble")]
     public Triangulation<float> FloatVsDouble_Float()
     {
-        var vf = _vertices.Select(v => new V2d<float>((float)v.X, (float)v.Y)).ToList();
+        var vf = Array.ConvertAll(_vertices, v => new V2d<float>((float)v.X, (float)v.Y));
         var ef = _edges;
         var cdt = new Triangulation<float>(VertexInsertionOrder.Auto);
         cdt.InsertVertices(vf);
