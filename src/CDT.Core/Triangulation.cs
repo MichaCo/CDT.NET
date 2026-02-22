@@ -111,20 +111,6 @@ public sealed class Triangulation<T>
     // KD-tree for nearest-point location
     private KdTree<T>? _kdTree;
 
-    // Reusable scratch buffers – avoid per-call heap allocations in hot paths
-    private readonly Stack<int> _triStack = new();
-    private readonly HashSet<int> _traversedScratch = new();
-    private readonly List<int> _intersected = new(8);
-    private readonly List<int> _polyL = new(8);
-    private readonly List<int> _polyR = new(8);
-    private readonly Dictionary<Edge, int> _outerTris = new(16);
-    private readonly List<Edge> _flippedEdges = new(4);
-    private readonly List<Edge> _edgesRemaining = new(4);
-    private readonly List<TriangulatePseudoPolygonTask> _tppTasks = new(8);
-    private readonly List<ConformToEdgeTask> _conformRemaining = new(8);
-    private readonly Dictionary<int, ushort> _behindBoundaryScratch = new();
-    private readonly HashSet<int> _toEraseScratch = new();
-
     // -------------------------------------------------------------------------
     // Construction
     // -------------------------------------------------------------------------
@@ -230,17 +216,17 @@ public sealed class Triangulation<T>
     /// <summary>Inserts constraint edges (constrained Delaunay triangulation).</summary>
     public void InsertEdges(IReadOnlyList<Edge> edges)
     {
-        _edgesRemaining.Clear();
-        _tppTasks.Clear();
+        var remaining = new List<Edge>(4);
+        var tppTasks = new List<TriangulatePseudoPolygonTask>(8);
         foreach (var e in edges)
         {
-            _edgesRemaining.Clear();
-            _edgesRemaining.Add(new Edge(e.V1 + _nTargetVerts, e.V2 + _nTargetVerts));
-            while (_edgesRemaining.Count > 0)
+            remaining.Clear();
+            remaining.Add(new Edge(e.V1 + _nTargetVerts, e.V2 + _nTargetVerts));
+            while (remaining.Count > 0)
             {
-                Edge edge = _edgesRemaining[^1];
-                _edgesRemaining.RemoveAt(_edgesRemaining.Count - 1);
-                InsertEdgeIteration(edge, new Edge(e.V1 + _nTargetVerts, e.V2 + _nTargetVerts), _edgesRemaining, _tppTasks);
+                Edge edge = remaining[^1];
+                remaining.RemoveAt(remaining.Count - 1);
+                InsertEdgeIteration(edge, new Edge(e.V1 + _nTargetVerts, e.V2 + _nTargetVerts), remaining, tppTasks);
             }
         }
     }
@@ -255,17 +241,17 @@ public sealed class Triangulation<T>
     /// </summary>
     public void ConformToEdges(IReadOnlyList<Edge> edges)
     {
-        _conformRemaining.Clear();
+        var remaining = new List<ConformToEdgeTask>(8);
         foreach (var e in edges)
         {
             var shifted = new Edge(e.V1 + _nTargetVerts, e.V2 + _nTargetVerts);
-            _conformRemaining.Clear();
-            _conformRemaining.Add(new ConformToEdgeTask(shifted, new List<Edge> { shifted }, 0));
-            while (_conformRemaining.Count > 0)
+            remaining.Clear();
+            remaining.Add(new ConformToEdgeTask(shifted, new List<Edge> { shifted }, 0));
+            while (remaining.Count > 0)
             {
-                var task = _conformRemaining[^1];
-                _conformRemaining.RemoveAt(_conformRemaining.Count - 1);
-                ConformToEdgeIteration(task.Edge, task.Originals, task.Overlaps, _conformRemaining);
+                var task = remaining[^1];
+                remaining.RemoveAt(remaining.Count - 1);
+                ConformToEdgeIteration(task.Edge, task.Originals, task.Overlaps, remaining);
             }
         }
     }
@@ -278,14 +264,14 @@ public sealed class Triangulation<T>
     public void EraseSuperTriangle()
     {
         if (_superGeomType != SuperGeometryType.SuperTriangle) return;
-        _toEraseScratch.Clear();
+        var toErase = new HashSet<int>();
         var triSpan = CollectionsMarshal.AsSpan(_triangles);
         for (int i = 0; i < triSpan.Length; i++)
         {
             if (CdtUtils.TouchesSuperTriangle(triSpan[i]))
-                _toEraseScratch.Add(i);
+                toErase.Add(i);
         }
-        FinalizeTriangulation(_toEraseScratch);
+        FinalizeTriangulation(toErase);
     }
 
     /// <summary>Removes all outer triangles (flood-fill from super-triangle vertex until a constraint edge).</summary>
@@ -306,12 +292,12 @@ public sealed class Triangulation<T>
     public void EraseOuterTrianglesAndHoles()
     {
         var depths = CalculateTriangleDepths();
-        _toEraseScratch.Clear();
+        var toErase = new HashSet<int>();
         for (int i = 0; i < _triangles.Count; i++)
         {
-            if (depths[i] % 2 == 0) _toEraseScratch.Add(i);
+            if (depths[i] % 2 == 0) toErase.Add(i);
         }
-        FinalizeTriangulation(_toEraseScratch);
+        FinalizeTriangulation(toErase);
     }
 
     /// <summary>
@@ -501,7 +487,7 @@ public sealed class Triangulation<T>
 
     private IReadOnlyList<Edge> InsertVertex_FlipFixedEdges(int iV)
     {
-        _flippedEdges.Clear();
+        var flipped = new List<Edge>();
         // Use KD-tree if available, otherwise fall back to vertex 0 (first super-triangle vertex)
         int near = _kdTree != null
             ? _kdTree.Nearest(_vertices[iV].X, _vertices[iV].Y, _vertices)
@@ -524,14 +510,14 @@ public sealed class Triangulation<T>
             {
                 var flippedEdge = new Edge(iv2, iv4);
                 if (_fixedEdges.Contains(flippedEdge))
-                    _flippedEdges.Add(flippedEdge);
+                    flipped.Add(flippedEdge);
                 FlipEdge(tri, itopo, iV, iv2, iv3, iv4, n1, n2, n3, n4);
                 stack.Push(tri);
                 stack.Push(itopo);
             }
         }
         TryAddVertexToLocator(iV);
-        return _flippedEdges;
+        return flipped;
     }
 
     private void EnsureDelaunayByEdgeFlips(int iV1, Stack<int> triStack)
@@ -655,11 +641,11 @@ public sealed class Triangulation<T>
         ChangeNeighbor(n2, iT, iNewT1);
         ChangeNeighbor(n3, iT, iNewT2);
 
-        _triStack.Clear();
-        _triStack.Push(iT);
-        _triStack.Push(iNewT1);
-        _triStack.Push(iNewT2);
-        return _triStack;
+        var stack = new Stack<int>(3);
+        stack.Push(iT);
+        stack.Push(iNewT1);
+        stack.Push(iNewT2);
+        return stack;
     }
 
     private Stack<int> InsertVertexOnEdge(int v, int iT1, int iT2, bool handleFixedSplitEdge)
@@ -698,12 +684,12 @@ public sealed class Triangulation<T>
                 SplitFixedEdge(sharedEdge, v);
         }
 
-        _triStack.Clear();
-        _triStack.Push(iT1);
-        _triStack.Push(iTnew2);
-        _triStack.Push(iT2);
-        _triStack.Push(iTnew1);
-        return _triStack;
+        var stack = new Stack<int>(4);
+        stack.Push(iT1);
+        stack.Push(iTnew2);
+        stack.Push(iT2);
+        stack.Push(iTnew1);
+        return stack;
     }
 
     // -------------------------------------------------------------------------
@@ -838,12 +824,14 @@ public sealed class Triangulation<T>
             return;
         }
 
-        _polyL.Clear(); _polyL.Add(iA); _polyL.Add(iVL);
-        _polyR.Clear(); _polyR.Add(iA); _polyR.Add(iVR);
-        _outerTris.Clear();
-        _outerTris[new Edge(iA, iVL)] = CdtUtils.EdgeNeighbor(_triangles[iT], iA, iVL);
-        _outerTris[new Edge(iA, iVR)] = CdtUtils.EdgeNeighbor(_triangles[iT], iA, iVR);
-        _intersected.Clear(); _intersected.Add(iT);
+        var polyL = new List<int>(8) { iA, iVL };
+        var polyR = new List<int>(8) { iA, iVR };
+        var outerTris = new Dictionary<Edge, int>
+        {
+            [new Edge(iA, iVL)] = CdtUtils.EdgeNeighbor(_triangles[iT], iA, iVL),
+            [new Edge(iA, iVR)] = CdtUtils.EdgeNeighbor(_triangles[iT], iA, iVR),
+        };
+        var intersected = new List<int>(8) { iT };
         int iV = iA;
         var t = _triangles[iT];
 
@@ -859,19 +847,19 @@ public sealed class Triangulation<T>
             var loc = LocatePointLine(_vertices[iVopo], a, b, distTol);
             if (loc == PtLineLocation.Left)
             {
-                var e = new Edge(_polyL[^1], iVopo);
+                var e = new Edge(polyL[^1], iVopo);
                 int outer = CdtUtils.EdgeNeighbor(tOpo, e.V1, e.V2);
-                if (!_outerTris.TryAdd(e, outer)) _outerTris[e] = Indices.NoNeighbor;
-                _polyL.Add(iVopo);
+                if (!outerTris.TryAdd(e, outer)) outerTris[e] = Indices.NoNeighbor;
+                polyL.Add(iVopo);
                 iV = iVL;
                 iVL = iVopo;
             }
             else if (loc == PtLineLocation.Right)
             {
-                var e = new Edge(_polyR[^1], iVopo);
+                var e = new Edge(polyR[^1], iVopo);
                 int outer = CdtUtils.EdgeNeighbor(tOpo, e.V1, e.V2);
-                if (!_outerTris.TryAdd(e, outer)) _outerTris[e] = Indices.NoNeighbor;
-                _polyR.Add(iVopo);
+                if (!outerTris.TryAdd(e, outer)) outerTris[e] = Indices.NoNeighbor;
+                polyR.Add(iVopo);
                 iV = iVR;
                 iVR = iVopo;
             }
@@ -880,28 +868,28 @@ public sealed class Triangulation<T>
                 iB = iVopo;
             }
 
-            _intersected.Add(iTopo);
+            intersected.Add(iTopo);
             iT = iTopo;
             t = _triangles[iT];
         }
 
-        _outerTris[new Edge(_polyL[^1], iB)] = CdtUtils.EdgeNeighbor(t, _polyL[^1], iB);
-        _outerTris[new Edge(_polyR[^1], iB)] = CdtUtils.EdgeNeighbor(t, _polyR[^1], iB);
-        _polyL.Add(iB);
-        _polyR.Add(iB);
+        outerTris[new Edge(polyL[^1], iB)] = CdtUtils.EdgeNeighbor(t, polyL[^1], iB);
+        outerTris[new Edge(polyR[^1], iB)] = CdtUtils.EdgeNeighbor(t, polyR[^1], iB);
+        polyL.Add(iB);
+        polyR.Add(iB);
 
         // Ensure start/end vertices have valid non-intersected triangle
-        if (_vertTris[iA] == _intersected[0]) PivotVertexTriangleCW(iA);
-        if (_vertTris[iB] == _intersected[^1]) PivotVertexTriangleCW(iB);
+        if (_vertTris[iA] == intersected[0]) PivotVertexTriangleCW(iA);
+        if (_vertTris[iB] == intersected[^1]) PivotVertexTriangleCW(iB);
 
-        _polyR.Reverse();
+        polyR.Reverse();
 
         // Re-use intersected triangles
-        int iTL = _intersected[^1]; _intersected.RemoveAt(_intersected.Count - 1);
-        int iTR = _intersected[^1]; _intersected.RemoveAt(_intersected.Count - 1);
+        int iTL = intersected[^1]; intersected.RemoveAt(intersected.Count - 1);
+        int iTR = intersected[^1]; intersected.RemoveAt(intersected.Count - 1);
 
-        TriangulatePseudoPolygon(_polyL, _outerTris, iTL, iTR, _intersected, tppIterations);
-        TriangulatePseudoPolygon(_polyR, _outerTris, iTR, iTL, _intersected, tppIterations);
+        TriangulatePseudoPolygon(polyL, outerTris, iTL, iTR, intersected, tppIterations);
+        TriangulatePseudoPolygon(polyR, outerTris, iTR, iTL, intersected, tppIterations);
 
         if (iB != edge.V2)
         {
@@ -1320,15 +1308,13 @@ public sealed class Triangulation<T>
     // Finalization
     // -------------------------------------------------------------------------
 
-    // Returns _traversedScratch directly to avoid allocation; caller must use
-    // the result immediately and not retain it across further triangulation calls.
     private HashSet<int> GrowToBoundary(Stack<int> seeds)
     {
-        _traversedScratch.Clear();
+        var traversed = new HashSet<int>();
         while (seeds.Count > 0)
         {
             int iT = seeds.Pop();
-            _traversedScratch.Add(iT);
+            traversed.Add(iT);
             var t = _triangles[iT];
             for (int i = 0; i < 3; i++)
             {
@@ -1337,11 +1323,11 @@ public sealed class Triangulation<T>
                 var opEdge = new Edge(va, vb);
                 if (_fixedEdges.Contains(opEdge)) continue;
                 int iN = t.GetNeighbor(CdtUtils.OpposedNeighborIndex(i));
-                if (iN != Indices.NoNeighbor && !_traversedScratch.Contains(iN))
+                if (iN != Indices.NoNeighbor && !traversed.Contains(iN))
                     seeds.Push(iN);
             }
         }
-        return _traversedScratch;
+        return traversed;
     }
 
     private void FinalizeTriangulation(HashSet<int> removedTriangles)
@@ -1464,25 +1450,22 @@ public sealed class Triangulation<T>
 
         while (layerSeeds.Count > 0)
         {
-            PeelLayer(layerSeeds, depth, depths);
-            // _behindBoundaryScratch now holds the seeds for the next layer
-            if (_behindBoundaryScratch.Count == 0) break;
-            layerSeeds.Clear();
-            foreach (var kv in _behindBoundaryScratch) layerSeeds.Push(kv.Key);
+            var nextLayer = PeelLayer(layerSeeds, depth, depths);
+            layerSeeds = new Stack<int>(nextLayer.Keys);
             depth++;
         }
         return depths;
     }
 
-    private void PeelLayer(Stack<int> seeds, ushort layerDepth, ushort[] triDepths)
+    private Dictionary<int, ushort> PeelLayer(Stack<int> seeds, ushort layerDepth, ushort[] triDepths)
     {
-        _behindBoundaryScratch.Clear();
+        var behindBoundary = new Dictionary<int, ushort>();
         var triSpan = CollectionsMarshal.AsSpan(_triangles);
         while (seeds.Count > 0)
         {
             int iT = seeds.Pop();
             triDepths[iT] = Math.Min(triDepths[iT], layerDepth);
-            _behindBoundaryScratch.Remove(iT);
+            behindBoundary.Remove(iT);
 
             ref readonly var t = ref triSpan[iT];
             for (int i = 0; i < 3; i++)
@@ -1499,8 +1482,8 @@ public sealed class Triangulation<T>
                     if (_overlapCount.TryGetValue(opEdge, out ushort ov))
                         nextDepth += ov;
                     nextDepth++;
-                    if (!_behindBoundaryScratch.TryGetValue(iN, out ushort existing) || existing > nextDepth)
-                        _behindBoundaryScratch[iN] = nextDepth;
+                    if (!behindBoundary.TryGetValue(iN, out ushort existing) || existing > nextDepth)
+                        behindBoundary[iN] = nextDepth;
                 }
                 else
                 {
@@ -1508,6 +1491,7 @@ public sealed class Triangulation<T>
                 }
             }
         }
+        return behindBoundary;
     }
 
     // -------------------------------------------------------------------------
