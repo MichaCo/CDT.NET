@@ -93,6 +93,9 @@ public struct Box2d<T>
         box.Envelop(points);
         return box;
     }
+
+    /// <inheritdoc/>
+    public override readonly string ToString() => $"[{Min}, {Max}]";
 }
 
 /// <summary>
@@ -228,6 +231,9 @@ public struct Triangle
         if (V1 == v) return (N0, V0);
         return (N1, V1);
     }
+
+    /// <inheritdoc/>
+    public override readonly string ToString() => $"V({V0}, {V1}, {V2}) N({N0}, {N1}, {N2})";
 }
 
 /// <summary>Shared index constants.</summary>
@@ -296,6 +302,9 @@ public readonly struct LayerDepth
 
     /// <summary>Implicit conversion to ushort.</summary>
     public static implicit operator ushort(LayerDepth d) => d.Value;
+
+    /// <inheritdoc/>
+    public override string ToString() => Value.ToString();
 }
 
 /// <summary>Location of a point relative to a triangle.</summary>
