@@ -4,6 +4,7 @@
 
 using BenchmarkDotNet.Attributes;
 using BenchmarkDotNet.Configs;
+using BenchmarkDotNet.Diagnosers;
 using BenchmarkDotNet.Running;
 using CDT;
 
@@ -59,6 +60,7 @@ internal static class BenchmarkInputReader
 /// ~2 600 constraint edges) – the same dataset used in the C++ CDT benchmarks.
 /// </summary>
 [MemoryDiagnoser]
+[EventPipeProfiler(EventPipeProfile.CpuSampling)]
 [GroupBenchmarksBy(BenchmarkLogicalGroupRule.ByCategory)]
 [CategoriesColumn]
 [ShortRunJob]
@@ -127,6 +129,16 @@ public class ConstrainedSwedenBenchmarks
         return cdt;
     }
 
+    [Benchmark(Description = "Conforming – AsProvided")]
+    [BenchmarkCategory("Conforming")]
+    public Triangulation<double> Conforming_AsProvided()
+    {
+        var cdt = new Triangulation<double>(VertexInsertionOrder.AsProvided);
+        cdt.InsertVertices(_vertices);
+        cdt.ConformToEdges(_edges);
+        return cdt;
+    }
+
     // -- Full pipeline (insert + erase outer + holes) ------------------------
 
     [Benchmark(Description = "Full pipeline – Auto")]
@@ -140,6 +152,30 @@ public class ConstrainedSwedenBenchmarks
         cdt.EraseOuterTrianglesAndHoles();
         return cdt;
     }
+
+    // -- Finalization APIs (EraseSuperTriangle / EraseOuterTriangles) ---------
+
+    [Benchmark(Description = "EraseSuperTriangle – Auto")]
+    [BenchmarkCategory("Finalization")]
+    public Triangulation<double> EraseSuperTriangle_Auto()
+    {
+        var cdt = new Triangulation<double>(VertexInsertionOrder.Auto);
+        cdt.InsertVertices(_vertices);
+        cdt.InsertEdges(_edges);
+        cdt.EraseSuperTriangle();
+        return cdt;
+    }
+
+    [Benchmark(Description = "EraseOuterTriangles – Auto")]
+    [BenchmarkCategory("Finalization")]
+    public Triangulation<double> EraseOuterTriangles_Auto()
+    {
+        var cdt = new Triangulation<double>(VertexInsertionOrder.Auto);
+        cdt.InsertVertices(_vertices);
+        cdt.InsertEdges(_edges);
+        cdt.EraseOuterTriangles();
+        return cdt;
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -151,6 +187,7 @@ public class ConstrainedSwedenBenchmarks
 /// to measure per-vertex overhead without the noise of large datasets.
 /// </summary>
 [MemoryDiagnoser]
+[EventPipeProfiler(EventPipeProfile.CpuSampling)]
 [GroupBenchmarksBy(BenchmarkLogicalGroupRule.ByCategory)]
 [CategoriesColumn]
 [ShortRunJob]
@@ -204,6 +241,39 @@ public class SmallDatasetBenchmarks
         var cdt = new Triangulation<float>(VertexInsertionOrder.Auto);
         cdt.InsertVertices(vf);
         cdt.InsertEdges(ef);
+        return cdt;
+    }
+
+    [Benchmark(Description = "Small – Conforming Auto")]
+    [BenchmarkCategory("SmallConforming")]
+    public Triangulation<double> Small_Conforming_Auto()
+    {
+        var cdt = new Triangulation<double>(VertexInsertionOrder.Auto);
+        cdt.InsertVertices(_vertices);
+        cdt.ConformToEdges(_edges);
+        return cdt;
+    }
+
+    [Benchmark(Description = "Small – EraseSuperTriangle Auto")]
+    [BenchmarkCategory("SmallFinalization")]
+    public Triangulation<double> Small_EraseSuperTriangle_Auto()
+    {
+        var cdt = new Triangulation<double>(VertexInsertionOrder.Auto);
+        cdt.InsertVertices(_vertices);
+        cdt.InsertEdges(_edges);
+        cdt.EraseSuperTriangle();
+        return cdt;
+    }
+
+    [Benchmark(Description = "Small – EraseOuterTrianglesAndHoles Auto")]
+    [BenchmarkCategory("SmallFinalization")]
+    public Triangulation<double> Small_EraseOuterTrianglesAndHoles_Auto()
+    {
+        var cdt = new Triangulation<double>(VertexInsertionOrder.Auto,
+            IntersectingConstraintEdges.TryResolve, 0.0);
+        cdt.InsertVertices(_vertices);
+        cdt.InsertEdges(_edges);
+        cdt.EraseOuterTrianglesAndHoles();
         return cdt;
     }
 }
