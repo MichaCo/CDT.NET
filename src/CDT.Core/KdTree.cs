@@ -79,10 +79,11 @@ internal sealed class KdTree<T>
     public int Size => _size;
 
     /// <summary>Inserts point at index <paramref name="iPoint"/> from the external buffer.</summary>
-    public void Insert(int iPoint, IReadOnlyList<V2d<T>> points)
+    public void Insert(int iPoint, List<V2d<T>> points)
     {
         _size++;
-        T px = points[iPoint].X, py = points[iPoint].Y;
+        var pSpan = CollectionsMarshal.AsSpan(points);
+        T px = pSpan[iPoint].X, py = pSpan[iPoint].Y;
 
         // Extend tree if the point falls outside the current box
         while (!IsInsideBox(px, py, _minX, _minY, _maxX, _maxY))
@@ -122,7 +123,7 @@ internal sealed class KdTree<T>
                 // Move existing points to children
                 foreach (int ip in n.Data!)
                 {
-                    T cx = points[ip].X, cy = points[ip].Y;
+                    T cx = pSpan[ip].X, cy = pSpan[ip].Y;
                     int target = WhichChild(cx, cy, mid, dir);
                     _nodes[target == 0 ? c1 : c2].Data!.Add(ip);
                 }
