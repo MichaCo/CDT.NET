@@ -1,7 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <TargetFramework>net10.0</TargetFramework>
+    <TargetFrameworks>net8.0;net10.0</TargetFrameworks>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
@@ -11,5 +11,29 @@
     <AssemblyName>CDT.Core</AssemblyName>
     <RootNamespace>CDT</RootNamespace>
   </PropertyGroup>
+
+  <!-- NuGet Package Metadata -->
+  <PropertyGroup>
+    <PackageId>CDT.NET</PackageId>
+    <VersionPrefix>1.0.0</VersionPrefix>
+    <Authors>Michael Conrad</Authors>
+    <Copyright>Copyright © 2026 Michael Conrad</Copyright>
+    <Description>A fast and robust C# port of the artem-ogre/CDT Constrained Delaunay Triangulation library. Supports constrained edges, holes, and modern .NET 8+ optimizations.</Description>
+    <PackageTags>CDT;constrained-delaunay;triangulation;geometry;mesh</PackageTags>
+    <PackageProjectUrl>https://github.com/MichaCo/CDT.NET</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/MichaCo/CDT.NET</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <PublishRepositoryUrl>true</PublishRepositoryUrl>
+    <EmbedUntrackedSources>true</EmbedUntrackedSources>
+    <IncludeSymbols>true</IncludeSymbols>
+    <SymbolPackageFormat>snupkg</SymbolPackageFormat>
+    <DebugType>portable</DebugType>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <None Include="..\..\README.md" Pack="true" PackagePath="\" />
+  </ItemGroup>
 
 </Project>
