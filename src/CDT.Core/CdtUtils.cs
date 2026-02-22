@@ -153,7 +153,7 @@ public static class CdtUtils
     /// Converts piece→original_edges mapping to original_edge→pieces mapping.
     /// </summary>
     public static Dictionary<Edge, List<Edge>> EdgeToPiecesMapping(
-        Dictionary<Edge, List<Edge>> pieceToOriginals)
+        IReadOnlyDictionary<Edge, IReadOnlyList<Edge>> pieceToOriginals)
     {
         var edgeToPieces = new Dictionary<Edge, List<Edge>>();
         foreach (var kv in pieceToOriginals)
