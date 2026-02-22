@@ -1,0 +1,126 @@
+name: CI/CD
+
+on:
+  push:
+    branches: [ main ]
+    tags: [ 'v*.*.*' ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  build-and-test:
+    name: Build and Test (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, ubuntu-latest]
+    permissions:
+      contents: read
+      pull-requests: write  # needed for sticky-pull-request-comment
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Required for SourceLink
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: |
+            8.0.x
+            10.0.x
+
+      # Windows: restore full solution (includes Windows-only CDT.Viz)
+      - name: Restore dependencies
+        if: runner.os == 'Windows'
+        run: dotnet restore
+
+      # Linux: restore only cross-platform projects (CDT.Viz targets Windows only)
+      - name: Restore dependencies
+        if: runner.os == 'Linux'
+        run: |
+          dotnet restore src/CDT.Core/CDT.Core.csproj
+          dotnet restore test/CDT.Tests/CDT.Tests.csproj
+
+      # Windows: build full solution
+      - name: Build
+        if: runner.os == 'Windows'
+        run: dotnet build --no-restore -c Release
+
+      # Linux: build only cross-platform projects
+      - name: Build
+        if: runner.os == 'Linux'
+        run: |
+          dotnet build --no-restore -c Release src/CDT.Core/CDT.Core.csproj
+          dotnet build --no-restore -c Release test/CDT.Tests/CDT.Tests.csproj
+
+      # Windows: test full solution
+      - name: Test
+        if: runner.os == 'Windows'
+        run: dotnet test --no-build -c Release --verbosity normal /p:CollectCoverage=true /p:CoverletOutputFormat=cobertura /p:CoverletOutput=${{ github.workspace }}/coverage/coverage.cobertura.xml
+
+      # Linux: test only CDT.Tests (CDT.Viz has no tests; benchmark is not a test project)
+      - name: Test
+        if: runner.os == 'Linux'
+        run: dotnet test --no-build -c Release --verbosity normal /p:CollectCoverage=true /p:CoverletOutputFormat=cobertura /p:CoverletOutput=${{ github.workspace }}/coverage/coverage.cobertura.xml test/CDT.Tests/CDT.Tests.csproj
+
+      - name: Generate coverage report
+        uses: danielpalme/ReportGenerator-GitHub-Action@5
+        with:
+          reports: ${{ github.workspace }}/coverage/coverage.cobertura.xml
+          targetdir: coveragereport
+          reporttypes: MarkdownSummaryGithub
+
+      - name: Write coverage to job summary (Windows)
+        if: runner.os == 'Windows'
+        run: Get-Content coveragereport/SummaryGithub.md >> $env:GITHUB_STEP_SUMMARY
+        shell: pwsh
+
+      - name: Add coverage PR comment
+        uses: marocchino/sticky-pull-request-comment@v2
+        if: runner.os == 'Windows' && github.event_name == 'pull_request'
+        with:
+          recreate: true
+          path: coveragereport/SummaryGithub.md
+
+      - name: Write coverage to job summary (Linux)
+        if: runner.os == 'Linux'
+        run: cat coveragereport/SummaryGithub.md >> $GITHUB_STEP_SUMMARY
+
+  publish:
+    name: Publish to NuGet
+    needs: build-and-test
+    runs-on: windows-latest
+    if: startsWith(github.ref, 'refs/tags/v')
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Required for SourceLink
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: |
+            8.0.x
+            10.0.x
+
+      - name: Restore dependencies
+        run: dotnet restore
+
+      - name: Build
+        run: dotnet build --no-restore -c Release
+
+      - name: Pack
+        run: dotnet pack src/CDT.Core/CDT.Core.csproj --no-build -c Release -o ./artifacts
+
+      - name: Push to NuGet.org
+        # Requires a NUGET_API_KEY secret configured in:
+        # GitHub → Repository Settings → Secrets and variables → Actions → New repository secret
+        run: dotnet nuget push ./artifacts/*.nupkg --api-key ${{ secrets.NUGET_API_KEY }} --source https://api.nuget.org/v3/index.json --skip-duplicate
