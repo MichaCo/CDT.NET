@@ -199,9 +199,10 @@ public sealed class Triangulation<T>
         else
         {
             // AsProvided: sequential order, KD-tree walk-start
+            var stack = new Stack<int>(4);
             for (int iV = insertStart; iV < _vertices.Count; iV++)
             {
-                InsertVertex(iV);
+                InsertVertex(iV, stack);
             }
         }
     }
@@ -369,16 +370,29 @@ public sealed class Triangulation<T>
     // Internal helpers – vertex insertion
     // -------------------------------------------------------------------------
 
-    private void InsertVertex(int iVert, int walkStart)
+    private void InsertVertex(int iVert, int walkStart, Stack<int> stack)
     {
         var (iT, iTopo) = WalkingSearchTrianglesAt(iVert, walkStart);
-        var stack = new Stack<int>(4);
         if (iTopo == Indices.NoNeighbor)
             InsertVertexInsideTriangle(iVert, iT, stack);
         else
             InsertVertexOnEdge(iVert, iT, iTopo, handleFixedSplitEdge: true, stack);
         EnsureDelaunayByEdgeFlips(iVert, stack);
         TryAddVertexToLocator(iVert);
+    }
+
+    private void InsertVertex(int iVert, int walkStart)
+    {
+        var stack = new Stack<int>(4);
+        InsertVertex(iVert, walkStart, stack);
+    }
+
+    private void InsertVertex(int iVert, Stack<int> stack)
+    {
+        int near = _kdTree != null
+            ? _kdTree.Nearest(_vertices[iVert].X, _vertices[iVert].Y, _vertices)
+            : 0;
+        InsertVertex(iVert, near, stack);
     }
 
     private void InsertVertex(int iVert)
@@ -400,7 +414,8 @@ public sealed class Triangulation<T>
             int j = Random.Shared.Next(i + 1);
             (indices[i], indices[j]) = (indices[j], indices[i]);
         }
-        foreach (int iV in indices) { InsertVertex(iV); }
+        var stack = new Stack<int>(4);
+        foreach (int iV in indices) { InsertVertex(iV, stack); }
     }
 
     private void InsertVertices_KDTreeBFS(int superGeomVertCount, Box2d<T> box)
@@ -414,12 +429,13 @@ public sealed class Triangulation<T>
         var queue = new Queue<(int lo, int hi, T boxMinX, T boxMinY, T boxMaxX, T boxMaxY, int parent)>();
         queue.Enqueue((0, vertexCount, box.Min.X, box.Min.Y, box.Max.X, box.Max.Y, 0));
 
+        var stack = new Stack<int>(4);
         while (queue.Count > 0)
         {
             var (lo, hi, boxMinX, boxMinY, boxMaxX, boxMaxY, parent) = queue.Dequeue();
             int len = hi - lo;
             if (len == 0) { continue; }
-            if (len == 1) { InsertVertex(indices[lo], parent); continue; }
+            if (len == 1) { InsertVertex(indices[lo], parent, stack); continue; }
 
             int midPos = lo + len / 2;
 
@@ -427,7 +443,7 @@ public sealed class Triangulation<T>
             {
                 NthElement(indices, lo, midPos, hi, new VertexXComparer(_vertices));
                 T split = _vertices[indices[midPos]].X;
-                InsertVertex(indices[midPos], parent);
+                InsertVertex(indices[midPos], parent, stack);
                 if (lo < midPos) { queue.Enqueue((lo, midPos, boxMinX, boxMinY, split, boxMaxY, indices[midPos])); }
                 if (midPos + 1 < hi) { queue.Enqueue((midPos + 1, hi, split, boxMinY, boxMaxX, boxMaxY, indices[midPos])); }
             }
@@ -435,7 +451,7 @@ public sealed class Triangulation<T>
             {
                 NthElement(indices, lo, midPos, hi, new VertexYComparer(_vertices));
                 T split = _vertices[indices[midPos]].Y;
-                InsertVertex(indices[midPos], parent);
+                InsertVertex(indices[midPos], parent, stack);
                 if (lo < midPos) { queue.Enqueue((lo, midPos, boxMinX, boxMinY, boxMaxX, split, indices[midPos])); }
                 if (midPos + 1 < hi) { queue.Enqueue((midPos + 1, hi, boxMinX, split, boxMaxX, boxMaxY, indices[midPos])); }
             }
@@ -739,46 +755,36 @@ public sealed class Triangulation<T>
         // Skip HashSet lookup when there are no fixed edges (pure vertex-insertion path).
         if (_fixedEdges.Count > 0 && _fixedEdges.Contains(new Edge(iV2, iV4))) return false;
 
+        var v1 = _vertices[iV1];
+        var v2 = _vertices[iV2];
+        var v3 = _vertices[iV3];
+        var v4 = _vertices[iV4];
+
         if (_superGeomType == SuperGeometryType.SuperTriangle)
         {
-            // Fast path: no super-triangle vertex involved (the common case after the
-            // first few insertions). Avoids four index comparisons and four vertex loads.
             int st = Indices.SuperTriangleVertexCount;
-            if (iV1 < st || iV2 < st || iV3 < st || iV4 < st)
+            if (iV1 < st)
             {
-                // Load only the vertices needed per branch to minimise memory accesses.
-                // Lines that check iV2/iV4 alone (bottom two) use the same formula as
-                // the iV1 < st path — intentional: the geometry predicate is symmetric
-                // in those positions when neither iV1 nor iV3 is a super vertex.
-                if (iV1 < st)
-                {
-                    if (iV2 < st)
-                        return LocatePointLine(_vertices[iV2], _vertices[iV3], _vertices[iV4]) ==
-                               LocatePointLine(_vertices[iV1], _vertices[iV3], _vertices[iV4]);
-                    if (iV4 < st)
-                        return LocatePointLine(_vertices[iV4], _vertices[iV2], _vertices[iV3]) ==
-                               LocatePointLine(_vertices[iV1], _vertices[iV2], _vertices[iV3]);
-                    return false;
-                }
-                if (iV3 < st)
-                {
-                    if (iV2 < st)
-                        return LocatePointLine(_vertices[iV2], _vertices[iV1], _vertices[iV4]) ==
-                               LocatePointLine(_vertices[iV3], _vertices[iV1], _vertices[iV4]);
-                    if (iV4 < st)
-                        return LocatePointLine(_vertices[iV4], _vertices[iV2], _vertices[iV1]) ==
-                               LocatePointLine(_vertices[iV3], _vertices[iV2], _vertices[iV1]);
-                    return false;
-                }
                 if (iV2 < st)
-                    return LocatePointLine(_vertices[iV2], _vertices[iV3], _vertices[iV4]) ==
-                           LocatePointLine(_vertices[iV1], _vertices[iV3], _vertices[iV4]);
+                    return LocatePointLine(v2, v3, v4) == LocatePointLine(v1, v3, v4);
                 if (iV4 < st)
-                    return LocatePointLine(_vertices[iV4], _vertices[iV2], _vertices[iV3]) ==
-                           LocatePointLine(_vertices[iV1], _vertices[iV2], _vertices[iV3]);
+                    return LocatePointLine(v4, v2, v3) == LocatePointLine(v1, v2, v3);
+                return false;
             }
+            if (iV3 < st)
+            {
+                if (iV2 < st)
+                    return LocatePointLine(v2, v1, v4) == LocatePointLine(v3, v1, v4);
+                if (iV4 < st)
+                    return LocatePointLine(v4, v2, v1) == LocatePointLine(v3, v2, v1);
+                return false;
+            }
+            if (iV2 < st)
+                return LocatePointLine(v2, v3, v4) == LocatePointLine(v1, v3, v4);
+            if (iV4 < st)
+                return LocatePointLine(v4, v2, v3) == LocatePointLine(v1, v2, v3);
         }
-        return IsInCircumcircle(_vertices[iV1], _vertices[iV2], _vertices[iV3], _vertices[iV4]);
+        return IsInCircumcircle(v1, v2, v3, v4);
     }
 
     private void FlipEdge(
