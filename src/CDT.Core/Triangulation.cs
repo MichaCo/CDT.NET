@@ -204,51 +204,16 @@ public sealed class Triangulation<T>
     /// <summary>Inserts a list of vertices into the triangulation.</summary>
     public void InsertVertices(IReadOnlyList<V2d<T>> newVertices)
     {
-        if (newVertices.Count == 0) return;
-
-        bool isFirstInsertion = _kdTree == null && _vertices.Count == 0;
-
-        // Build bounding box of new vertices
-        var box = new Box2d<T>();
-        box.Envelop(newVertices);
-
-        if (isFirstInsertion)
-        {
-            AddSuperTriangle(box);
-        }
-        else if (_kdTree == null)
-        {
-            // Subsequent calls: initialize the KD tree with all existing vertices
-            InitKdTree();
-        }
-
-        int insertStart = _vertices.Count;
-        _vertices.EnsureCapacity(_vertices.Count + newVertices.Count);
-        _triangles.EnsureCapacity(_triangles.Count + 2 * newVertices.Count + 1);
-        _vertTris.EnsureCapacity(_vertTris.Count + newVertices.Count);
-        foreach (var v in newVertices)
-        {
-            AddNewVertex(v, Indices.NoNeighbor);
-        }
-
-        if (_insertionOrder == VertexInsertionOrder.Auto && isFirstInsertion)
-        {
-            // Use BFS KD-tree ordering for the first bulk insertion
-            // Walk-start comes from the BFS parent, not the KD tree
-            InsertVertices_KDTreeBFS(insertStart, box);
-        }
-        else if (_insertionOrder == VertexInsertionOrder.Auto)
-        {
-            // Subsequent calls: randomized with KD-tree walk-start
-            InsertVertices_Randomized(insertStart);
-        }
+        if (newVertices is List<V2d<T>> list)
+            InsertVertices(CollectionsMarshal.AsSpan(list));
+        else if (newVertices is V2d<T>[] array)
+            InsertVertices((ReadOnlySpan<V2d<T>>)array);
         else
         {
-            // AsProvided: sequential order, KD-tree walk-start
-            for (int iV = insertStart; iV < _vertices.Count; iV++)
-            {
-                InsertVertex(iV);
-            }
+            // Rare: copy non-List, non-array IReadOnlyList to a temporary array
+            var tmp = new V2d<T>[newVertices.Count];
+            for (int i = 0; i < tmp.Length; i++) tmp[i] = newVertices[i];
+            InsertVertices((ReadOnlySpan<V2d<T>>)tmp);
         }
     }
 

@@ -5,6 +5,7 @@
 using System.Collections.ObjectModel;
 using System.Numerics;
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using CDT.Predicates;
 
 namespace CDT;
@@ -53,27 +54,14 @@ public static class CdtUtils
     public static DuplicatesInfo FindDuplicates<T>(IReadOnlyList<V2d<T>> vertices)
         where T : IFloatingPoint<T>
     {
-        int n = vertices.Count;
-        var mapping = new int[n];
-        var duplicates = new List<int>();
-        var posToIndex = new Dictionary<V2dKey<T>, int>(n);
-
-        int iOut = 0;
-        for (int iIn = 0; iIn < n; iIn++)
-        {
-            var key = new V2dKey<T>(vertices[iIn].X, vertices[iIn].Y);
-            if (posToIndex.TryGetValue(key, out int existing))
-            {
-                mapping[iIn] = existing;
-                duplicates.Add(iIn);
-            }
-            else
-            {
-                posToIndex[key] = iOut;
-                mapping[iIn] = iOut++;
-            }
-        }
-        return new DuplicatesInfo(mapping, duplicates);
+        if (vertices is List<V2d<T>> list)
+            return FindDuplicates<T>(CollectionsMarshal.AsSpan(list));
+        if (vertices is V2d<T>[] array)
+            return FindDuplicates<T>(array);
+        // Rare: copy non-List, non-array IReadOnlyList to a temporary array
+        var tmp = new V2d<T>[vertices.Count];
+        for (int i = 0; i < tmp.Length; i++) tmp[i] = vertices[i];
+        return FindDuplicates<T>(tmp);
     }
 
     /// <summary>
