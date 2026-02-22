@@ -1436,19 +1436,22 @@ public sealed class Triangulation<T>
     private void RemoveTriangles(HashSet<int> removed)
     {
         if (removed.Count == 0) return;
+        // Build a flat bool[] for O(1) indexed lookup — replaces all HashSet.Contains calls
+        var isRemoved = new bool[_trianglesCount];
+        foreach (int i in removed) isRemoved[i] = true;
         // Build compact mapping: old index → new index
         var mapping = new int[_trianglesCount];
         int newIdx = 0;
         for (int i = 0; i < _trianglesCount; i++)
         {
-            if (removed.Contains(i)) { mapping[i] = Indices.NoNeighbor; continue; }
+            if (isRemoved[i]) { mapping[i] = Indices.NoNeighbor; continue; }
             mapping[i] = newIdx++;
         }
         // Compact triangle list
         int write = 0;
         for (int i = 0; i < _trianglesCount; i++)
         {
-            if (removed.Contains(i)) continue;
+            if (isRemoved[i]) continue;
             _triangles[write++] = _triangles[i];
         }
         _trianglesCount = write;
@@ -1456,9 +1459,9 @@ public sealed class Triangulation<T>
         for (int i = 0; i < _trianglesCount; i++)
         {
             ref var t = ref _triangles[i];
-            t.N0 = t.N0 == Indices.NoNeighbor ? Indices.NoNeighbor : (removed.Contains(t.N0) ? Indices.NoNeighbor : mapping[t.N0]);
-            t.N1 = t.N1 == Indices.NoNeighbor ? Indices.NoNeighbor : (removed.Contains(t.N1) ? Indices.NoNeighbor : mapping[t.N1]);
-            t.N2 = t.N2 == Indices.NoNeighbor ? Indices.NoNeighbor : (removed.Contains(t.N2) ? Indices.NoNeighbor : mapping[t.N2]);
+            t.N0 = t.N0 == Indices.NoNeighbor ? Indices.NoNeighbor : (isRemoved[t.N0] ? Indices.NoNeighbor : mapping[t.N0]);
+            t.N1 = t.N1 == Indices.NoNeighbor ? Indices.NoNeighbor : (isRemoved[t.N1] ? Indices.NoNeighbor : mapping[t.N1]);
+            t.N2 = t.N2 == Indices.NoNeighbor ? Indices.NoNeighbor : (isRemoved[t.N2] ? Indices.NoNeighbor : mapping[t.N2]);
         }
     }
 
