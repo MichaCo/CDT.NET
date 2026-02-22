@@ -147,8 +147,9 @@ internal sealed class KdTree<T>
     }
 
     /// <summary>Finds the nearest point to <paramref name="points"/> in the external buffer.</summary>
-    public int Nearest(T qx, T qy, IReadOnlyList<V2d<T>> points)
+    public int Nearest(T qx, T qy, List<V2d<T>> points)
     {
+        var pSpan = CollectionsMarshal.AsSpan(points);
         int resultIdx = 0;
         T minDistSq = T.MaxValue;
         int stackTop = -1;
@@ -166,8 +167,8 @@ internal sealed class KdTree<T>
             {
                 foreach (int ip in n.Data!)
                 {
-                    T dx = points[ip].X - qx;
-                    T dy = points[ip].Y - qy;
+                    T dx = pSpan[ip].X - qx;
+                    T dy = pSpan[ip].Y - qy;
                     T d2 = dx * dx + dy * dy;
                     if (d2 < minDistSq) { minDistSq = d2; resultIdx = ip; }
                 }
@@ -310,14 +311,15 @@ internal sealed class KdTree<T>
         _root = newRoot;
     }
 
-    private void InitializeRootBox(IReadOnlyList<V2d<T>> points)
+    private void InitializeRootBox(List<V2d<T>> points)
     {
         Node rootNode = _nodes[_root];
-        T mxn = points[rootNode.Data![0]].X, myn = points[rootNode.Data[0]].Y;
+        var pSpan = CollectionsMarshal.AsSpan(points);
+        T mxn = pSpan[rootNode.Data![0]].X, myn = pSpan[rootNode.Data[0]].Y;
         T mxx = mxn, mxy = myn;
         foreach (int ip in rootNode.Data)
         {
-            T cx = points[ip].X, cy = points[ip].Y;
+            T cx = pSpan[ip].X, cy = pSpan[ip].Y;
             if (cx < mxn) mxn = cx;
             if (cx > mxx) mxx = cx;
             if (cy < myn) myn = cy;

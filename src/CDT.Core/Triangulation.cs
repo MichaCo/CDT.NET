@@ -118,6 +118,12 @@ public sealed class Triangulation<T>
     private readonly List<int> _polyL = new(8);
     private readonly List<int> _polyR = new(8);
     private readonly Dictionary<Edge, int> _outerTris = new(16);
+    private readonly List<Edge> _flippedEdges = new(4);
+    private readonly List<Edge> _edgesRemaining = new(4);
+    private readonly List<TriangulatePseudoPolygonTask> _tppTasks = new(8);
+    private readonly List<ConformToEdgeTask> _conformRemaining = new(8);
+    private readonly Dictionary<int, ushort> _behindBoundaryScratch = new();
+    private readonly HashSet<int> _toEraseScratch = new();
 
     // -------------------------------------------------------------------------
     // Construction
@@ -224,17 +230,17 @@ public sealed class Triangulation<T>
     /// <summary>Inserts constraint edges (constrained Delaunay triangulation).</summary>
     public void InsertEdges(IReadOnlyList<Edge> edges)
     {
-        var remaining = new List<Edge>(4);
-        var tppTasks = new List<TriangulatePseudoPolygonTask>(8);
+        _edgesRemaining.Clear();
+        _tppTasks.Clear();
         foreach (var e in edges)
         {
-            remaining.Clear();
-            remaining.Add(new Edge(e.V1 + _nTargetVerts, e.V2 + _nTargetVerts));
-            while (remaining.Count > 0)
+            _edgesRemaining.Clear();
+            _edgesRemaining.Add(new Edge(e.V1 + _nTargetVerts, e.V2 + _nTargetVerts));
+            while (_edgesRemaining.Count > 0)
             {
-                Edge edge = remaining[^1];
-                remaining.RemoveAt(remaining.Count - 1);
-                InsertEdgeIteration(edge, new Edge(e.V1 + _nTargetVerts, e.V2 + _nTargetVerts), remaining, tppTasks);
+                Edge edge = _edgesRemaining[^1];
+                _edgesRemaining.RemoveAt(_edgesRemaining.Count - 1);
+                InsertEdgeIteration(edge, new Edge(e.V1 + _nTargetVerts, e.V2 + _nTargetVerts), _edgesRemaining, _tppTasks);
             }
         }
     }
@@ -249,17 +255,17 @@ public sealed class Triangulation<T>
     /// </summary>
     public void ConformToEdges(IReadOnlyList<Edge> edges)
     {
-        var remaining = new List<ConformToEdgeTask>(8);
+        _conformRemaining.Clear();
         foreach (var e in edges)
         {
             var shifted = new Edge(e.V1 + _nTargetVerts, e.V2 + _nTargetVerts);
-            remaining.Clear();
-            remaining.Add(new ConformToEdgeTask(shifted, new List<Edge> { shifted }, 0));
-            while (remaining.Count > 0)
+            _conformRemaining.Clear();
+            _conformRemaining.Add(new ConformToEdgeTask(shifted, new List<Edge> { shifted }, 0));
+            while (_conformRemaining.Count > 0)
             {
-                var task = remaining[^1];
-                remaining.RemoveAt(remaining.Count - 1);
-                ConformToEdgeIteration(task.Edge, task.Originals, task.Overlaps, remaining);
+                var task = _conformRemaining[^1];
+                _conformRemaining.RemoveAt(_conformRemaining.Count - 1);
+                ConformToEdgeIteration(task.Edge, task.Originals, task.Overlaps, _conformRemaining);
             }
         }
     }
@@ -272,13 +278,14 @@ public sealed class Triangulation<T>
     public void EraseSuperTriangle()
     {
         if (_superGeomType != SuperGeometryType.SuperTriangle) return;
-        var toErase = new HashSet<int>();
-        for (int i = 0; i < _triangles.Count; i++)
+        _toEraseScratch.Clear();
+        var triSpan = CollectionsMarshal.AsSpan(_triangles);
+        for (int i = 0; i < triSpan.Length; i++)
         {
-            if (CdtUtils.TouchesSuperTriangle(_triangles[i]))
-                toErase.Add(i);
+            if (CdtUtils.TouchesSuperTriangle(triSpan[i]))
+                _toEraseScratch.Add(i);
         }
-        FinalizeTriangulation(toErase);
+        FinalizeTriangulation(_toEraseScratch);
     }
 
     /// <summary>Removes all outer triangles (flood-fill from super-triangle vertex until a constraint edge).</summary>
@@ -299,12 +306,12 @@ public sealed class Triangulation<T>
     public void EraseOuterTrianglesAndHoles()
     {
         var depths = CalculateTriangleDepths();
-        var toErase = new HashSet<int>();
+        _toEraseScratch.Clear();
         for (int i = 0; i < _triangles.Count; i++)
         {
-            if (depths[i] % 2 == 0) toErase.Add(i);
+            if (depths[i] % 2 == 0) _toEraseScratch.Add(i);
         }
-        FinalizeTriangulation(toErase);
+        FinalizeTriangulation(_toEraseScratch);
     }
 
     /// <summary>
@@ -419,37 +426,44 @@ public sealed class Triangulation<T>
         int vertexCount = _vertices.Count - superGeomVertCount;
         if (vertexCount <= 0) { return; }
 
-        var indices = new int[vertexCount];
-        for (int i = 0; i < vertexCount; i++) { indices[i] = superGeomVertCount + i; }
-
-        var queue = new Queue<(int lo, int hi, T boxMinX, T boxMinY, T boxMaxX, T boxMaxY, int parent)>();
-        queue.Enqueue((0, vertexCount, box.Min.X, box.Min.Y, box.Max.X, box.Max.Y, 0));
-
-        while (queue.Count > 0)
+        var indices = ArrayPool<int>.Shared.Rent(vertexCount);
+        try
         {
-            var (lo, hi, boxMinX, boxMinY, boxMaxX, boxMaxY, parent) = queue.Dequeue();
-            int len = hi - lo;
-            if (len == 0) { continue; }
-            if (len == 1) { InsertVertex(indices[lo], parent); continue; }
+            for (int i = 0; i < vertexCount; i++) { indices[i] = superGeomVertCount + i; }
 
-            int midPos = lo + len / 2;
+            var queue = new Queue<(int lo, int hi, T boxMinX, T boxMinY, T boxMaxX, T boxMaxY, int parent)>();
+            queue.Enqueue((0, vertexCount, box.Min.X, box.Min.Y, box.Max.X, box.Max.Y, 0));
 
-            if (T.CreateChecked(boxMaxX - boxMinX) >= T.CreateChecked(boxMaxY - boxMinY))
+            while (queue.Count > 0)
             {
-                NthElement(indices, lo, midPos, hi, (a, b) => _vertices[a].X.CompareTo(_vertices[b].X));
-                T split = _vertices[indices[midPos]].X;
-                InsertVertex(indices[midPos], parent);
-                if (lo < midPos) { queue.Enqueue((lo, midPos, boxMinX, boxMinY, split, boxMaxY, indices[midPos])); }
-                if (midPos + 1 < hi) { queue.Enqueue((midPos + 1, hi, split, boxMinY, boxMaxX, boxMaxY, indices[midPos])); }
+                var (lo, hi, boxMinX, boxMinY, boxMaxX, boxMaxY, parent) = queue.Dequeue();
+                int len = hi - lo;
+                if (len == 0) { continue; }
+                if (len == 1) { InsertVertex(indices[lo], parent); continue; }
+
+                int midPos = lo + len / 2;
+
+                if (T.CreateChecked(boxMaxX - boxMinX) >= T.CreateChecked(boxMaxY - boxMinY))
+                {
+                    NthElement(indices, lo, midPos, hi, (a, b) => _vertices[a].X.CompareTo(_vertices[b].X));
+                    T split = _vertices[indices[midPos]].X;
+                    InsertVertex(indices[midPos], parent);
+                    if (lo < midPos) { queue.Enqueue((lo, midPos, boxMinX, boxMinY, split, boxMaxY, indices[midPos])); }
+                    if (midPos + 1 < hi) { queue.Enqueue((midPos + 1, hi, split, boxMinY, boxMaxX, boxMaxY, indices[midPos])); }
+                }
+                else
+                {
+                    NthElement(indices, lo, midPos, hi, (a, b) => _vertices[a].Y.CompareTo(_vertices[b].Y));
+                    T split = _vertices[indices[midPos]].Y;
+                    InsertVertex(indices[midPos], parent);
+                    if (lo < midPos) { queue.Enqueue((lo, midPos, boxMinX, boxMinY, boxMaxX, split, indices[midPos])); }
+                    if (midPos + 1 < hi) { queue.Enqueue((midPos + 1, hi, boxMinX, split, boxMaxX, boxMaxY, indices[midPos])); }
+                }
             }
-            else
-            {
-                NthElement(indices, lo, midPos, hi, (a, b) => _vertices[a].Y.CompareTo(_vertices[b].Y));
-                T split = _vertices[indices[midPos]].Y;
-                InsertVertex(indices[midPos], parent);
-                if (lo < midPos) { queue.Enqueue((lo, midPos, boxMinX, boxMinY, boxMaxX, split, indices[midPos])); }
-                if (midPos + 1 < hi) { queue.Enqueue((midPos + 1, hi, boxMinX, split, boxMaxX, boxMaxY, indices[midPos])); }
-            }
+        }
+        finally
+        {
+            ArrayPool<int>.Shared.Return(indices);
         }
     }
 
@@ -487,7 +501,7 @@ public sealed class Triangulation<T>
 
     private List<Edge> InsertVertex_FlipFixedEdges(int iV)
     {
-        var flipped = new List<Edge>();
+        _flippedEdges.Clear();
         // Use KD-tree if available, otherwise fall back to vertex 0 (first super-triangle vertex)
         int near = _kdTree != null
             ? _kdTree.Nearest(_vertices[iV].X, _vertices[iV].Y, _vertices)
@@ -510,14 +524,14 @@ public sealed class Triangulation<T>
             {
                 var flippedEdge = new Edge(iv2, iv4);
                 if (_fixedEdges.Contains(flippedEdge))
-                    flipped.Add(flippedEdge);
+                    _flippedEdges.Add(flippedEdge);
                 FlipEdge(tri, itopo, iV, iv2, iv3, iv4, n1, n2, n3, n4);
                 stack.Push(tri);
                 stack.Push(itopo);
             }
         }
         TryAddVertexToLocator(iV);
-        return flipped;
+        return _flippedEdges;
     }
 
     private void EnsureDelaunayByEdgeFlips(int iV1, Stack<int> triStack)
@@ -546,22 +560,23 @@ public sealed class Triangulation<T>
 
     private (int iT, int iTopo) WalkingSearchTrianglesAt(int iVert, int startVertex)
     {
-        var v = _vertices[iVert];
+        var vertSpan = CollectionsMarshal.AsSpan(_vertices);
+        var v = vertSpan[iVert];
         int iT = WalkTriangles(startVertex, v);
-        var t = _triangles[iT];
+        ref readonly var t = ref CollectionsMarshal.AsSpan(_triangles)[iT];
 
-        var loc = LocatePointTriangle(v, _vertices[t.V0], _vertices[t.V1], _vertices[t.V2]);
+        var loc = LocatePointTriangle(v, vertSpan[t.V0], vertSpan[t.V1], vertSpan[t.V2]);
 
         if (loc == PtTriLocation.Outside)
         {
             // Walk hit a degenerate cycle; fall back to brute-force linear scan
             iT = FindTriangleLinear(v, out loc);
-            t = _triangles[iT];
+            t = ref CollectionsMarshal.AsSpan(_triangles)[iT];
         }
 
         if (loc == PtTriLocation.OnVertex)
         {
-            int iDupe = _vertices[t.V0] == v ? t.V0 : _vertices[t.V1] == v ? t.V1 : t.V2;
+            int iDupe = vertSpan[t.V0] == v ? t.V0 : vertSpan[t.V1] == v ? t.V1 : t.V2;
             throw new DuplicateVertexException(iVert - _nTargetVerts, iDupe - _nTargetVerts);
         }
 
@@ -574,10 +589,12 @@ public sealed class Triangulation<T>
     /// <summary>Brute-force O(n) fallback: scan all triangles to find the one containing <paramref name="pos"/>.</summary>
     private int FindTriangleLinear(V2d<T> pos, out PtTriLocation loc)
     {
-        for (int i = 0; i < _triangles.Count; i++)
+        var triSpan = CollectionsMarshal.AsSpan(_triangles);
+        var vertSpan = CollectionsMarshal.AsSpan(_vertices);
+        for (int i = 0; i < triSpan.Length; i++)
         {
-            var t = _triangles[i];
-            loc = LocatePointTriangle(pos, _vertices[t.V0], _vertices[t.V1], _vertices[t.V2]);
+            ref readonly var t = ref triSpan[i];
+            loc = LocatePointTriangle(pos, vertSpan[t.V0], vertSpan[t.V1], vertSpan[t.V2]);
             if (loc != PtTriLocation.Outside)
             {
                 return i;
@@ -589,9 +606,11 @@ public sealed class Triangulation<T>
     private int WalkTriangles(int startVertex, V2d<T> pos)
     {
         int currTri = _vertTris[startVertex];
+        var triSpan = CollectionsMarshal.AsSpan(_triangles);
+        var vertSpan = CollectionsMarshal.AsSpan(_vertices);
         for (int guard = 0; guard < 1_000_000; guard++)
         {
-            var t = _triangles[currTri];
+            ref readonly var t = ref triSpan[currTri];
             bool found = true;
             int offset = guard % 3;
             for (int i = 0; i < 3; i++)
@@ -599,7 +618,7 @@ public sealed class Triangulation<T>
                 int idx = (i + offset) % 3;
                 int vStart = t.GetVertex(idx);
                 int vEnd = t.GetVertex(CdtUtils.Ccw(idx));
-                var loc = LocatePointLine(pos, _vertices[vStart], _vertices[vEnd]);
+                var loc = LocatePointLine(pos, vertSpan[vStart], vertSpan[vEnd]);
                 int iN = t.GetNeighbor(idx);
                 if (loc == PtLineLocation.Right && iN != Indices.NoNeighbor)
                 {
@@ -696,7 +715,8 @@ public sealed class Triangulation<T>
         out int iTopo, out int iV2, out int iV3, out int iV4,
         out int n1, out int n2, out int n3, out int n4)
     {
-        var t = _triangles[iT];
+        var triSpan = CollectionsMarshal.AsSpan(_triangles);
+        ref readonly var t = ref triSpan[iT];
         if (t.V0 == iV1)
         {
             iV2 = t.V1; iV4 = t.V2;
@@ -722,7 +742,7 @@ public sealed class Triangulation<T>
 
         if (iTopo == Indices.NoNeighbor) return;
 
-        var tOpo = _triangles[iTopo];
+        ref readonly var tOpo = ref triSpan[iTopo];
         int oi = CdtUtils.NeighborIndex(tOpo, iT);
         int ov = CdtUtils.OpposedVertexIndex(oi);
         iV3 = tOpo.GetVertex(ov);
@@ -735,10 +755,11 @@ public sealed class Triangulation<T>
     {
         if (_fixedEdges.Contains(new Edge(iV2, iV4))) return false;
 
-        var v1 = _vertices[iV1];
-        var v2 = _vertices[iV2];
-        var v3 = _vertices[iV3];
-        var v4 = _vertices[iV4];
+        var vertSpan = CollectionsMarshal.AsSpan(_vertices);
+        var v1 = vertSpan[iV1];
+        var v2 = vertSpan[iV2];
+        var v3 = vertSpan[iV3];
+        var v4 = vertSpan[iV4];
 
         if (_superGeomType == SuperGeometryType.SuperTriangle)
         {
@@ -1384,35 +1405,43 @@ public sealed class Triangulation<T>
     private void RemoveTriangles(HashSet<int> removed)
     {
         if (removed.Count == 0) return;
+        int triCount = _triangles.Count;
         // Build compact mapping: old index → new index
-        var mapping = new int[_triangles.Count];
-        int newIdx = 0;
-        for (int i = 0; i < _triangles.Count; i++)
+        var mapping = ArrayPool<int>.Shared.Rent(triCount);
+        try
         {
-            if (removed.Contains(i)) { mapping[i] = Indices.NoNeighbor; continue; }
-            mapping[i] = newIdx++;
-        }
-        // Compact triangle list using span (no per-element bounds checks)
-        {
-            var span = CollectionsMarshal.AsSpan(_triangles);
-            int write = 0;
-            for (int i = 0; i < span.Length; i++)
+            int newIdx = 0;
+            for (int i = 0; i < triCount; i++)
             {
-                if (removed.Contains(i)) continue;
-                span[write++] = span[i];
+                if (removed.Contains(i)) { mapping[i] = Indices.NoNeighbor; continue; }
+                mapping[i] = newIdx++;
             }
-            _triangles.RemoveRange(write, _triangles.Count - write);
-        }
-        // Re-map neighbor indices
-        {
-            var span = CollectionsMarshal.AsSpan(_triangles);
-            for (int i = 0; i < span.Length; i++)
+            // Compact triangle list using span (no per-element bounds checks)
             {
-                ref var t = ref span[i];
-                t.N0 = t.N0 == Indices.NoNeighbor ? Indices.NoNeighbor : (removed.Contains(t.N0) ? Indices.NoNeighbor : mapping[t.N0]);
-                t.N1 = t.N1 == Indices.NoNeighbor ? Indices.NoNeighbor : (removed.Contains(t.N1) ? Indices.NoNeighbor : mapping[t.N1]);
-                t.N2 = t.N2 == Indices.NoNeighbor ? Indices.NoNeighbor : (removed.Contains(t.N2) ? Indices.NoNeighbor : mapping[t.N2]);
+                var span = CollectionsMarshal.AsSpan(_triangles);
+                int write = 0;
+                for (int i = 0; i < span.Length; i++)
+                {
+                    if (removed.Contains(i)) continue;
+                    span[write++] = span[i];
+                }
+                _triangles.RemoveRange(write, _triangles.Count - write);
             }
+            // Re-map neighbor indices
+            {
+                var span = CollectionsMarshal.AsSpan(_triangles);
+                for (int i = 0; i < span.Length; i++)
+                {
+                    ref var t = ref span[i];
+                    t.N0 = t.N0 == Indices.NoNeighbor ? Indices.NoNeighbor : (removed.Contains(t.N0) ? Indices.NoNeighbor : mapping[t.N0]);
+                    t.N1 = t.N1 == Indices.NoNeighbor ? Indices.NoNeighbor : (removed.Contains(t.N1) ? Indices.NoNeighbor : mapping[t.N1]);
+                    t.N2 = t.N2 == Indices.NoNeighbor ? Indices.NoNeighbor : (removed.Contains(t.N2) ? Indices.NoNeighbor : mapping[t.N2]);
+                }
+            }
+        }
+        finally
+        {
+            ArrayPool<int>.Shared.Return(mapping);
         }
     }
 
@@ -1435,24 +1464,27 @@ public sealed class Triangulation<T>
 
         while (layerSeeds.Count > 0)
         {
-            var nextLayer = PeelLayer(layerSeeds, depth, depths);
-            layerSeeds = new Stack<int>(nextLayer.Keys);
+            PeelLayer(layerSeeds, depth, depths);
+            // _behindBoundaryScratch now holds the seeds for the next layer
+            if (_behindBoundaryScratch.Count == 0) break;
+            layerSeeds.Clear();
+            foreach (var kv in _behindBoundaryScratch) layerSeeds.Push(kv.Key);
             depth++;
         }
         return depths;
     }
 
-    private Dictionary<int, ushort> PeelLayer(
-        Stack<int> seeds, ushort layerDepth, ushort[] triDepths)
+    private void PeelLayer(Stack<int> seeds, ushort layerDepth, ushort[] triDepths)
     {
-        var behindBoundary = new Dictionary<int, ushort>();
+        _behindBoundaryScratch.Clear();
+        var triSpan = CollectionsMarshal.AsSpan(_triangles);
         while (seeds.Count > 0)
         {
             int iT = seeds.Pop();
             triDepths[iT] = Math.Min(triDepths[iT], layerDepth);
-            behindBoundary.Remove(iT);
+            _behindBoundaryScratch.Remove(iT);
 
-            var t = _triangles[iT];
+            ref readonly var t = ref triSpan[iT];
             for (int i = 0; i < 3; i++)
             {
                 int va = t.GetVertex(CdtUtils.Ccw(i));
@@ -1467,8 +1499,8 @@ public sealed class Triangulation<T>
                     if (_overlapCount.TryGetValue(opEdge, out ushort ov))
                         nextDepth += ov;
                     nextDepth++;
-                    if (!behindBoundary.ContainsKey(iN) || behindBoundary[iN] > nextDepth)
-                        behindBoundary[iN] = nextDepth;
+                    if (!_behindBoundaryScratch.TryGetValue(iN, out ushort existing) || existing > nextDepth)
+                        _behindBoundaryScratch[iN] = nextDepth;
                 }
                 else
                 {
@@ -1476,7 +1508,6 @@ public sealed class Triangulation<T>
                 }
             }
         }
-        return behindBoundary;
     }
 
     // -------------------------------------------------------------------------
