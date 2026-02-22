@@ -10,6 +10,9 @@ on:
     branches: [ main ]
   workflow_dispatch:
 
+permissions:
+  id-token: write   # required for GitHub OIDC
+
 jobs:
   build-and-test:
     name: Build and Test (${{ matrix.os }})
@@ -99,6 +102,7 @@ jobs:
     if: startsWith(github.ref, 'refs/tags/v')
     permissions:
       contents: read
+      id-token: write  # required for OIDC Trusted Publishing
 
     steps:
       - name: Checkout
@@ -125,7 +129,11 @@ jobs:
           $version = "${{ github.ref_name }}" -replace '^v', ''
           dotnet pack src/CDT.Core/CDT.Core.csproj --no-build -c Release -o ./artifacts /p:Version=$version
 
+      - name: NuGet login
+        uses: NuGet/login@v1
+        id: login
+        with:
+          user: MichaConrad
+
       - name: Push to NuGet.org
-        # Requires a NUGET_API_KEY secret configured in:
-        # GitHub → Repository Settings → Secrets and variables → Actions → New repository secret
-        run: dotnet nuget push ./artifacts/*.nupkg --api-key ${{ secrets.NUGET_API_KEY }} --source https://api.nuget.org/v3/index.json --skip-duplicate
+        run: dotnet nuget push ./artifacts/*.nupkg --api-key ${{ steps.login.outputs.NUGET_API_KEY }} --source https://api.nuget.org/v3/index.json --skip-duplicate
