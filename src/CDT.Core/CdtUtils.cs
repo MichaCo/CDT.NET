@@ -78,26 +78,27 @@ public static class CdtUtils
     }
 
     /// <summary>
-    /// Removes duplicate vertices from the list in-place using the result from
-    /// <see cref="FindDuplicates{T}(ReadOnlySpan{V2d{T}})"/>.
+    /// Removes duplicate vertices from the span in-place (stable compaction).
+    /// Returns the number of unique vertices remaining; the caller is responsible
+    /// for truncating the backing collection if needed.
     /// </summary>
     /// <typeparam name="T">Floating-point coordinate type.</typeparam>
-    /// <param name="vertices">The vertex list to modify in-place.</param>
+    /// <param name="vertices">The vertex span to compact in-place.</param>
     /// <param name="duplicates">The span of duplicate indices to remove.</param>
-    /// <remarks>The <paramref name="vertices"/> list is mutated in-place.</remarks>
-    public static void RemoveDuplicates<T>(List<V2d<T>> vertices, ReadOnlySpan<int> duplicates)
+    /// <returns>The number of unique vertices after compaction.</returns>
+    public static int RemoveDuplicates<T>(Span<V2d<T>> vertices, ReadOnlySpan<int> duplicates)
         where T : IFloatingPoint<T>
     {
-        if (duplicates.IsEmpty) return;
+        if (duplicates.IsEmpty) return vertices.Length;
         var toRemove = new HashSet<int>(duplicates.Length);
         foreach (int d in duplicates) toRemove.Add(d);
         int write = 0;
-        for (int i = 0; i < vertices.Count; i++)
+        for (int i = 0; i < vertices.Length; i++)
         {
             if (!toRemove.Contains(i))
                 vertices[write++] = vertices[i];
         }
-        vertices.RemoveRange(write, vertices.Count - write);
+        return write;
     }
 
     /// <summary>
@@ -114,9 +115,11 @@ public static class CdtUtils
         List<Edge> edges)
         where T : IFloatingPoint<T>
     {
-        var info = FindDuplicates<T>(CollectionsMarshal.AsSpan(vertices));
-        RemoveDuplicates(vertices, info.Duplicates);
-        RemapEdges(edges, info.Mapping);
+        var span = CollectionsMarshal.AsSpan(vertices);
+        var info = FindDuplicates<T>(span);
+        int newCount = RemoveDuplicates<T>(span, info.Duplicates);
+        vertices.RemoveRange(newCount, vertices.Count - newCount);
+        RemapEdges(CollectionsMarshal.AsSpan(edges), info.Mapping);
         return info;
     }
 
@@ -127,14 +130,13 @@ public static class CdtUtils
     /// <summary>
     /// Remaps all edges using the given vertex index mapping (in-place).
     /// </summary>
-    /// <param name="edges">The edge list to modify in-place.</param>
+    /// <param name="edges">The edge span to modify in-place.</param>
     /// <param name="mapping">
     /// Vertex index mapping: for each old vertex index <c>i</c>, <c>mapping[i]</c> is the new index.
     /// </param>
-    /// <remarks>The <paramref name="edges"/> list is mutated in-place.</remarks>
-    public static void RemapEdges(List<Edge> edges, ReadOnlySpan<int> mapping)
+    public static void RemapEdges(Span<Edge> edges, ReadOnlySpan<int> mapping)
     {
-        for (int i = 0; i < edges.Count; i++)
+        for (int i = 0; i < edges.Length; i++)
         {
             edges[i] = new Edge(mapping[edges[i].V1], mapping[edges[i].V2]);
         }
