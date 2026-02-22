@@ -20,23 +20,9 @@ internal static class BenchmarkInputReader
     /// </summary>
     public static (List<V2d<double>> Vertices, List<Edge> Edges) Read(string fileName)
     {
-        // Locate the file relative to the benchmark executable or the repo
-        string[] searchDirs =
-        [
-            AppContext.BaseDirectory,
-            Path.Combine(AppContext.BaseDirectory, "inputs"),
-            Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..",
-                "test", "CDT.Tests", "inputs"),
-        ];
+        var path = Path.Combine(AppContext.BaseDirectory, "inputs", fileName);
 
-        string? path = null;
-        foreach (var dir in searchDirs)
-        {
-            var candidate = Path.Combine(dir, fileName);
-            if (File.Exists(candidate)) { path = candidate; break; }
-        }
-
-        if (path is null)
+        if (!File.Exists(path))
             throw new FileNotFoundException($"Benchmark input file not found: {fileName}");
 
         using var sr = new StreamReader(path);
