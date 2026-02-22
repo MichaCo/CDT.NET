@@ -18,15 +18,15 @@ public sealed class DuplicatesInfo
     /// <summary>
     /// Maps each original vertex index to its canonical (deduplicated) index.
     /// </summary>
-    public IReadOnlyList<int> Mapping { get; }
+    public int[] Mapping { get; }
 
     /// <summary>Indices of duplicate vertices in the original list.</summary>
-    public IReadOnlyList<int> Duplicates { get; }
+    public int[] Duplicates { get; }
 
     internal DuplicatesInfo(int[] mapping, List<int> duplicates)
     {
-        Mapping = Array.AsReadOnly(mapping);
-        Duplicates = duplicates.AsReadOnly();
+        Mapping = mapping;
+        Duplicates = duplicates.ToArray();
     }
 }
 
@@ -40,29 +40,6 @@ public static class CdtUtils
     // -------------------------------------------------------------------------
     // Duplicate removal
     // -------------------------------------------------------------------------
-
-    /// <summary>
-    /// Finds duplicate vertices (same X and Y) in the given list and returns
-    /// mapping and duplicate index information.
-    /// </summary>
-    /// <typeparam name="T">Floating-point coordinate type.</typeparam>
-    /// <param name="vertices">The vertex list to check for duplicates.</param>
-    /// <returns>
-    /// A <see cref="DuplicatesInfo"/> containing a mapping from each original
-    /// index to its canonical index, and the list of duplicate indices.
-    /// </returns>
-    public static DuplicatesInfo FindDuplicates<T>(IReadOnlyList<V2d<T>> vertices)
-        where T : IFloatingPoint<T>
-    {
-        if (vertices is List<V2d<T>> list)
-            return FindDuplicates<T>(CollectionsMarshal.AsSpan(list));
-        if (vertices is V2d<T>[] array)
-            return FindDuplicates<T>(array);
-        // Rare: copy non-List, non-array IReadOnlyList to a temporary array
-        var tmp = new V2d<T>[vertices.Count];
-        for (int i = 0; i < tmp.Length; i++) tmp[i] = vertices[i];
-        return FindDuplicates<T>(tmp);
-    }
 
     /// <summary>
     /// Finds duplicate vertices (same X and Y) in the given span and returns
@@ -102,17 +79,18 @@ public static class CdtUtils
 
     /// <summary>
     /// Removes duplicate vertices from the list in-place using the result from
-    /// <see cref="FindDuplicates{T}(IReadOnlyList{V2d{T}})"/>.
+    /// <see cref="FindDuplicates{T}(ReadOnlySpan{V2d{T}})"/>.
     /// </summary>
     /// <typeparam name="T">Floating-point coordinate type.</typeparam>
     /// <param name="vertices">The vertex list to modify in-place.</param>
-    /// <param name="duplicates">The list of duplicate indices to remove.</param>
+    /// <param name="duplicates">The span of duplicate indices to remove.</param>
     /// <remarks>The <paramref name="vertices"/> list is mutated in-place.</remarks>
-    public static void RemoveDuplicates<T>(List<V2d<T>> vertices, IReadOnlyList<int> duplicates)
+    public static void RemoveDuplicates<T>(List<V2d<T>> vertices, ReadOnlySpan<int> duplicates)
         where T : IFloatingPoint<T>
     {
-        if (duplicates.Count == 0) return;
-        var toRemove = new HashSet<int>(duplicates);
+        if (duplicates.IsEmpty) return;
+        var toRemove = new HashSet<int>(duplicates.Length);
+        foreach (int d in duplicates) toRemove.Add(d);
         int write = 0;
         for (int i = 0; i < vertices.Count; i++)
         {
@@ -136,7 +114,7 @@ public static class CdtUtils
         List<Edge> edges)
         where T : IFloatingPoint<T>
     {
-        var info = FindDuplicates(vertices);
+        var info = FindDuplicates<T>(CollectionsMarshal.AsSpan(vertices));
         RemoveDuplicates(vertices, info.Duplicates);
         RemapEdges(edges, info.Mapping);
         return info;
@@ -154,7 +132,7 @@ public static class CdtUtils
     /// Vertex index mapping: for each old vertex index <c>i</c>, <c>mapping[i]</c> is the new index.
     /// </param>
     /// <remarks>The <paramref name="edges"/> list is mutated in-place.</remarks>
-    public static void RemapEdges(List<Edge> edges, IReadOnlyList<int> mapping)
+    public static void RemapEdges(List<Edge> edges, ReadOnlySpan<int> mapping)
     {
         for (int i = 0; i < edges.Count; i++)
         {
@@ -166,13 +144,13 @@ public static class CdtUtils
     // Edge extraction
     // -------------------------------------------------------------------------
 
-    /// <summary>Extracts all unique edges from a triangle list.</summary>
-    /// <param name="triangles">The triangle list to extract edges from.</param>
+    /// <summary>Extracts all unique edges from a triangle span.</summary>
+    /// <param name="triangles">The triangle span to extract edges from.</param>
     /// <returns>A set containing all unique edges in the triangulation.</returns>
-    public static HashSet<Edge> ExtractEdgesFromTriangles(IReadOnlyList<Triangle> triangles)
+    public static HashSet<Edge> ExtractEdgesFromTriangles(ReadOnlySpan<Triangle> triangles)
     {
-        var edges = new HashSet<Edge>(triangles.Count * 3);
-        foreach (var t in triangles)
+        var edges = new HashSet<Edge>(triangles.Length * 3);
+        foreach (ref readonly var t in triangles)
         {
             edges.Add(new Edge(t.V0, t.V1));
             edges.Add(new Edge(t.V1, t.V2));
@@ -185,20 +163,20 @@ public static class CdtUtils
     /// Calculates per-vertex triangle adjacency lists.
     /// Returns an array where each entry is the list of triangle indices adjacent to that vertex.
     /// </summary>
-    /// <param name="triangles">The triangle list.</param>
+    /// <param name="triangles">The triangle span.</param>
     /// <param name="verticesCount">Total number of vertices.</param>
     /// <returns>
     /// A read-only list of read-only lists: for each vertex index, the list of adjacent triangle indices.
     /// </returns>
     public static IReadOnlyList<IReadOnlyList<int>> CalculateTrianglesByVertex(
-        IReadOnlyList<Triangle> triangles,
+        ReadOnlySpan<Triangle> triangles,
         int verticesCount)
     {
         var result = new List<int>[verticesCount];
         for (int i = 0; i < verticesCount; i++) result[i] = new List<int>();
-        for (int i = 0; i < triangles.Count; i++)
+        for (int i = 0; i < triangles.Length; i++)
         {
-            var t = triangles[i];
+            ref readonly var t = ref triangles[i];
             result[t.V0].Add(i);
             result[t.V1].Add(i);
             result[t.V2].Add(i);

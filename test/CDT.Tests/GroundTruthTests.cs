@@ -19,7 +19,7 @@ public static class TestInputReader
     /// Reads a CDT input file.
     /// Format: <c>nVerts nEdges\n x y\n … v1 v2\n …</c>
     /// </summary>
-    public static (List<V2d<T>> Vertices, List<Edge> Edges) ReadInput<T>(string path)
+    public static (V2d<T>[] Vertices, Edge[] Edges) ReadInput<T>(string path)
         where T : IFloatingPoint<T>
     {
         var lines = File.ReadAllLines(path);
@@ -29,20 +29,20 @@ public static class TestInputReader
         int nVerts = int.Parse(header[0]);
         int nEdges = int.Parse(header[1]);
 
-        var vertices = new List<V2d<T>>(nVerts);
+        var vertices = new V2d<T>[nVerts];
         for (int i = 0; i < nVerts; i++)
         {
             var p = Split(lines[idx++]);
             var x = T.Parse(p[0], CultureInfo.InvariantCulture);
             var y = T.Parse(p[1], CultureInfo.InvariantCulture);
-            vertices.Add(new V2d<T>(x, y));
+            vertices[i] = new V2d<T>(x, y);
         }
 
-        var edges = new List<Edge>(nEdges);
+        var edges = new Edge[nEdges];
         for (int i = 0; i < nEdges; i++)
         {
             var e = Split(lines[idx++]);
-            edges.Add(new Edge(int.Parse(e[0]), int.Parse(e[1])));
+            edges[i] = new Edge(int.Parse(e[0]), int.Parse(e[1]));
         }
 
         return (vertices, edges);
@@ -537,8 +537,8 @@ public sealed class RegressionTests
     {
         // Regression: specific configuration that previously caused infinite loops
         // during pseudo-polygon triangulation
-        var pts = new List<V2d<double>>
-        {
+        V2d<double>[] pts =
+        [
             Pt<double>(0, 0),   // 0
             Pt<double>(1, 0),   // 1
             Pt<double>(0.5, 0.1), // 2
@@ -547,7 +547,7 @@ public sealed class RegressionTests
             Pt<double>(0.1, 0.9),  // 5
             Pt<double>(0.9, 0.9),  // 6
             Pt<double>(0.5, 0.95), // 7
-        };
+        ];
         var cdt = new Triangulation<double>(
             VertexInsertionOrder.Auto,
             IntersectingConstraintEdges.NotAllowed,
@@ -561,8 +561,8 @@ public sealed class RegressionTests
     public void Issue154_3_LoopsInPseudoPoly2()
     {
         // Regression: 9-vertex configuration with edge {0,8}
-        var pts = new List<V2d<double>>
-        {
+        V2d<double>[] pts =
+        [
             Pt<double>(0, 0),    // 0
             Pt<double>(1, 0),    // 1
             Pt<double>(2, 0),    // 2
@@ -572,7 +572,7 @@ public sealed class RegressionTests
             Pt<double>(0.5, 0.5),// 6
             Pt<double>(1.5, 0.5),// 7
             Pt<double>(1, 2),    // 8
-        };
+        ];
         var cdt = new Triangulation<double>(
             VertexInsertionOrder.Auto,
             IntersectingConstraintEdges.NotAllowed,
@@ -671,13 +671,13 @@ public sealed class RegressionTests
         cdtSingle.EraseOuterTrianglesAndHoles();
 
         // Two-batch: insert vertices in two halves, then edges
-        int half = verts.Count / 2;
+        int half = verts.Length / 2;
         var cdtTwo = new Triangulation<double>(
             VertexInsertionOrder.Auto,
             IntersectingConstraintEdges.NotAllowed,
             0.0);
-        cdtTwo.InsertVertices(verts.Take(half).ToList());
-        cdtTwo.InsertVertices(verts.Skip(half).ToList());
+        cdtTwo.InsertVertices(verts[..half]);
+        cdtTwo.InsertVertices(verts[half..]);
         cdtTwo.InsertEdges(edges);
         cdtTwo.EraseOuterTrianglesAndHoles();
 

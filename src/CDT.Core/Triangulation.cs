@@ -193,28 +193,12 @@ public sealed class Triangulation<T>
         }
     }
 
-    /// <summary>Inserts a list of vertices into the triangulation.</summary>
-    public void InsertVertices(IReadOnlyList<V2d<T>> newVertices)
-    {
-        if (newVertices is List<V2d<T>> list)
-            InsertVertices(CollectionsMarshal.AsSpan(list));
-        else if (newVertices is V2d<T>[] array)
-            InsertVertices((ReadOnlySpan<V2d<T>>)array);
-        else
-        {
-            // Rare: copy non-List, non-array IReadOnlyList to a temporary array
-            var tmp = new V2d<T>[newVertices.Count];
-            for (int i = 0; i < tmp.Length; i++) tmp[i] = newVertices[i];
-            InsertVertices((ReadOnlySpan<V2d<T>>)tmp);
-        }
-    }
-
     // -------------------------------------------------------------------------
     // Public API – edge insertion (constrained DT)
     // -------------------------------------------------------------------------
 
     /// <summary>Inserts constraint edges (constrained Delaunay triangulation).</summary>
-    public void InsertEdges(IReadOnlyList<Edge> edges)
+    public void InsertEdges(ReadOnlySpan<Edge> edges)
     {
         var remaining = new List<Edge>(4);
         var tppTasks = new List<TriangulatePseudoPolygonTask>(8);
@@ -239,7 +223,7 @@ public sealed class Triangulation<T>
     /// Inserts constraint edges for a conforming Delaunay triangulation.
     /// May add new vertices (midpoints) until edges are represented.
     /// </summary>
-    public void ConformToEdges(IReadOnlyList<Edge> edges)
+    public void ConformToEdges(ReadOnlySpan<Edge> edges)
     {
         var remaining = new List<ConformToEdgeTask>(8);
         foreach (var e in edges)
@@ -1501,7 +1485,7 @@ public sealed class Triangulation<T>
     private void InitKdTree()
     {
         var box = new Box2d<T>();
-        box.Envelop(_vertices);
+        box.Envelop(CollectionsMarshal.AsSpan(_vertices));
         _kdTree = new KdTree<T>(box.Min.X, box.Min.Y, box.Max.X, box.Max.Y);
         for (int i = 0; i < _vertices.Count; i++)
             _kdTree.Insert(i, _vertices);

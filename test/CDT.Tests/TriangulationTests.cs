@@ -2,6 +2,8 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
+using System.Runtime.InteropServices;
+
 namespace CDT.Tests;
 
 /// <summary>Basic triangulation tests (float and double).</summary>
@@ -65,7 +67,8 @@ public abstract class TriangulationTestsBase<T>
         Assert.Equal(2, cdt.Triangles.Count);
         Assert.Contains(constraint, cdt.FixedEdges);
 
-        var edges = CdtUtils.ExtractEdgesFromTriangles(cdt.Triangles);
+        var edges = CdtUtils.ExtractEdgesFromTriangles(
+            CollectionsMarshal.AsSpan((List<Triangle>)cdt.Triangles));
         Assert.Contains(constraint, edges);
     }
 
@@ -92,7 +95,8 @@ public abstract class TriangulationTestsBase<T>
         cdt.InsertVertices([Pt(0, 0), Pt(1, 0), Pt(0.5, 1)]);
         cdt.EraseSuperTriangle();
 
-        var edges = CdtUtils.ExtractEdgesFromTriangles(cdt.Triangles);
+        var edges = CdtUtils.ExtractEdgesFromTriangles(
+            CollectionsMarshal.AsSpan((List<Triangle>)cdt.Triangles));
         Assert.Equal(3, edges.Count); // one triangle → 3 edges
     }
 
@@ -141,11 +145,8 @@ public abstract class TriangulationTestsBase<T>
     [Fact]
     public void FindDuplicates_DetectsExactMatches()
     {
-        var pts = new List<V2d<T>>
-        {
-            Pt(0, 0), Pt(1, 0), Pt(0, 0), Pt(2, 0),
-        };
-        var info = CdtUtils.FindDuplicates(pts);
+        V2d<T>[] pts = [Pt(0, 0), Pt(1, 0), Pt(0, 0), Pt(2, 0)];
+        var info = CdtUtils.FindDuplicates<T>(pts);
         Assert.Single(info.Duplicates);
         Assert.Equal(2, info.Duplicates[0]);
         // mapping[2] should equal mapping[0] = 0
