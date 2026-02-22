@@ -18,7 +18,7 @@
   <ItemGroup>
     <Resource Include="Resources\cdt.ico" Condition="Exists('Resources\cdt.ico')" />
     <!-- Copy test input files so the file list is populated at runtime -->
-    <Content Include="..\..\test\CDT.Tests\inputs\*.txt"
+    <Content Include="data\*.txt"
              CopyToOutputDirectory="PreserveNewest"
              Link="inputs\%(Filename)%(Extension)" />
   </ItemGroup>

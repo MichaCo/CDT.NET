@@ -205,15 +205,13 @@ public partial class MainWindow : Window
     private void OnLoaded(object sender, RoutedEventArgs e)
     {
         // Add the visual element to fill the canvas border
-        _visual.Width = double.NaN;
-        _visual.Height = double.NaN;
         TriCanvas.Children.Add(_visual);
         Canvas.SetLeft(_visual, 0);
         Canvas.SetTop(_visual, 0);
 
-        // Stretch visual to fill the border
-        _visual.HorizontalAlignment = HorizontalAlignment.Stretch;
-        _visual.VerticalAlignment = VerticalAlignment.Stretch;
+        // Set size immediately so FitView works correctly before SizeChanged fires
+        _visual.Width = CanvasBorder.ActualWidth;
+        _visual.Height = CanvasBorder.ActualHeight;
         CanvasBorder.SizeChanged += (_, _) =>
         {
             _visual.Width = CanvasBorder.ActualWidth;
@@ -224,6 +222,10 @@ public partial class MainWindow : Window
         PopulateFileList();
 
         _initializing = false;
+
+        // Auto-load the first example
+        if (FileList.Items.Count > 0)
+            FileList.SelectedIndex = 0;
     }
 
     private void PopulateFileList()
@@ -484,8 +486,11 @@ public partial class MainWindow : Window
         if (dx == 0) dx = 1;
         if (dy == 0) dy = 1;
 
-        double w = Math.Max(_visual.ActualWidth, 1);
-        double h = Math.Max(_visual.ActualHeight, 1);
+        // Use CanvasBorder dimensions directly: the visual always fills it and
+        // CanvasBorder.ActualWidth/Height are correct even before the visual's
+        // own ActualWidth/Height have been updated by the layout pass.
+        double w = Math.Max(CanvasBorder.ActualWidth, 1);
+        double h = Math.Max(CanvasBorder.ActualHeight, 1);
 
         _visual.Scale = Math.Min(w / dx, h / dy) * 0.9;
         _visual.Translation = new Vector(-_visual.Scale * cx, _visual.Scale * cy);
