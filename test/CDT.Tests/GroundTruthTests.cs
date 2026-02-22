@@ -68,8 +68,8 @@ public static class TriangulationTopo
     public static string ToString<T>(Triangulation<T> cdt)
         where T : unmanaged, IFloatingPoint<T>, IMinMaxValue<T>, IRootFunctions<T>
     {
-        var triangles = cdt.Triangles;
-        int n = triangles.Count;
+        var triangles = cdt.Triangles.Span;
+        int n = triangles.Length;
 
         // Step 1: rotate each triangle so smallest vertex is first
         var canonical = new (int v0, int v1, int v2, int n0, int n1, int n2)[n];
@@ -527,7 +527,7 @@ public sealed class RegressionTests
             new V2d<double>(0.0, -1e38),
         ]);
         Assert.True(TopologyVerifier.VerifyTopology(cdt));
-        Assert.Equal(5, cdt.Triangles.Count); // 2 user verts + 3 super = 5 triangles
+        Assert.Equal(5, cdt.Triangles.Length); // 2 user verts + 3 super = 5 triangles
     }
 
     // ---- Issue 154: Loops in PseudoPoly ----
@@ -597,7 +597,7 @@ public sealed class RegressionTests
         ]);
         Assert.True(TopologyVerifier.VerifyTopology(cdt));
         cdt.EraseSuperTriangle();
-        Assert.Single(cdt.Triangles);
+        Assert.Equal(1, cdt.Triangles.Length);
     }
 
     // ---- Issue 204: Insert Vertex on Fixed Edge ----
@@ -686,8 +686,8 @@ public sealed class RegressionTests
         Assert.True(TopologyVerifier.VerifyTopology(cdtTwo));
 
         // Triangle count must match
-        Assert.Equal(cdtSingle.Triangles.Count, cdtTwo.Triangles.Count);
-        Assert.Equal(cdtSingle.Vertices.Count, cdtTwo.Vertices.Count);
+        Assert.Equal(cdtSingle.Triangles.Length, cdtTwo.Triangles.Length);
+        Assert.Equal(cdtSingle.Vertices.Length, cdtTwo.Vertices.Length);
         Assert.Equal(cdtSingle.FixedEdges.Count, cdtTwo.FixedEdges.Count);
     }
 }

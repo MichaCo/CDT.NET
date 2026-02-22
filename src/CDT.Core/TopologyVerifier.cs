@@ -19,16 +19,16 @@ public static class TopologyVerifier
     public static bool VerifyTopology<T>(Triangulation<T> cdt)
         where T : unmanaged, IFloatingPoint<T>, IMinMaxValue<T>, IRootFunctions<T>
     {
-        var triangles = cdt.Triangles;
-        var vertices = cdt.Vertices;
+        var triangles = cdt.Triangles.Span;
+        var vertices = cdt.Vertices.Span;
 
-        for (int iT = 0; iT < triangles.Count; iT++)
+        for (int iT = 0; iT < triangles.Length; iT++)
         {
             var t = triangles[iT];
             // Verify non-invalid vertices
             if (t.V0 == Indices.NoVertex || t.V1 == Indices.NoVertex || t.V2 == Indices.NoVertex)
                 return false;
-            if (t.V0 >= vertices.Count || t.V1 >= vertices.Count || t.V2 >= vertices.Count)
+            if (t.V0 >= vertices.Length || t.V1 >= vertices.Length || t.V2 >= vertices.Length)
                 return false;
             // No degenerate (same-vertex) triangles
             if (t.V0 == t.V1 || t.V1 == t.V2 || t.V0 == t.V2)
@@ -39,7 +39,7 @@ public static class TopologyVerifier
             {
                 int iN = t.GetNeighbor(i);
                 if (iN == Indices.NoNeighbor) continue;
-                if (iN >= triangles.Count) return false;
+                if (iN >= triangles.Length) return false;
                 var tN = triangles[iN];
                 // Neighbor must reference us back
                 if (tN.N0 != iT && tN.N1 != iT && tN.N2 != iT)

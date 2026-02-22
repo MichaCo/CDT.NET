@@ -86,6 +86,15 @@ public struct Box2d<T>
         }
     }
 
+    /// <summary>Expands the box to include all given points.</summary>
+    public void Envelop(ReadOnlySpan<V2d<T>> points)
+    {
+        foreach (ref readonly var p in points)
+        {
+            Envelop(p.X, p.Y);
+        }
+    }
+
     /// <summary>Creates a box containing all the given points.</summary>
     public static Box2d<T> Of(IReadOnlyList<V2d<T>> points)
     {
