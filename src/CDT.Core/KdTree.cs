@@ -55,12 +55,14 @@ internal sealed class KdTree<T>
     private T _minX, _minY, _maxX, _maxY;
     private bool _boxInitialized;
     private int _size;
+    private readonly T _two;
 
     private NearestTask[] _stack = new NearestTask[InitialStackDepth];
 
     /// <summary>Initializes an empty KD-tree with no bounding box pre-set.</summary>
     public KdTree()
     {
+        _two = T.One + T.One;
         _minX = T.MinValue; _minY = T.MinValue;
         _maxX = T.MaxValue; _maxY = T.MaxValue;
         _root = AddNewNode();
@@ -70,6 +72,7 @@ internal sealed class KdTree<T>
     /// <summary>Initializes an empty KD-tree with a known bounding box.</summary>
     public KdTree(T minX, T minY, T maxX, T maxY)
     {
+        _two = T.One + T.One;
         _minX = minX; _minY = minY; _maxX = maxX; _maxY = maxY;
         _root = AddNewNode();
         _boxInitialized = true;
@@ -226,10 +229,9 @@ internal sealed class KdTree<T>
         => px >= minX && px <= maxX && py >= minY && py <= maxY;
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static T GetMid(T minX, T minY, T maxX, T maxY, SplitDir dir)
+    private T GetMid(T minX, T minY, T maxX, T maxY, SplitDir dir)
     {
-        T two = T.One + T.One;
-        return dir == SplitDir.X ? (minX + maxX) / two : (minY + maxY) / two;
+        return dir == SplitDir.X ? (minX + maxX) / _two : (minY + maxY) / _two;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]

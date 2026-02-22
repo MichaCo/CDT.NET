@@ -203,6 +203,10 @@ public sealed class Triangulation<T>
     {
         var remaining = new List<Edge>(4);
         var tppTasks = new List<TriangulatePseudoPolygonTask>(8);
+        var polyL = new List<int>(8);
+        var polyR = new List<int>(8);
+        var outerTris = new Dictionary<Edge, int>();
+        var intersected = new List<int>(8);
         foreach (var e in edges)
         {
             remaining.Clear();
@@ -211,7 +215,7 @@ public sealed class Triangulation<T>
             {
                 Edge edge = remaining[^1];
                 remaining.RemoveAt(remaining.Count - 1);
-                InsertEdgeIteration(edge, new Edge(e.V1 + _nTargetVerts, e.V2 + _nTargetVerts), remaining, tppTasks);
+                InsertEdgeIteration(edge, new Edge(e.V1 + _nTargetVerts, e.V2 + _nTargetVerts), remaining, tppTasks, polyL, polyR, outerTris, intersected);
             }
         }
     }
@@ -355,9 +359,11 @@ public sealed class Triangulation<T>
     private void InsertVertex(int iVert, int walkStart)
     {
         var (iT, iTopo) = WalkingSearchTrianglesAt(iVert, walkStart);
-        var stack = iTopo == Indices.NoNeighbor
-            ? InsertVertexInsideTriangle(iVert, iT)
-            : InsertVertexOnEdge(iVert, iT, iTopo, handleFixedSplitEdge: true);
+        var stack = new Stack<int>(4);
+        if (iTopo == Indices.NoNeighbor)
+            InsertVertexInsideTriangle(iVert, iT, stack);
+        else
+            InsertVertexOnEdge(iVert, iT, iTopo, handleFixedSplitEdge: true, stack);
         EnsureDelaunayByEdgeFlips(iVert, stack);
         TryAddVertexToLocator(iVert);
     }
@@ -406,7 +412,7 @@ public sealed class Triangulation<T>
 
             if (T.CreateChecked(boxMaxX - boxMinX) >= T.CreateChecked(boxMaxY - boxMinY))
             {
-                NthElement(indices, lo, midPos, hi, (a, b) => _vertices[a].X.CompareTo(_vertices[b].X));
+                NthElement(indices, lo, midPos, hi, new VertexXComparer(_vertices));
                 T split = _vertices[indices[midPos]].X;
                 InsertVertex(indices[midPos], parent);
                 if (lo < midPos) { queue.Enqueue((lo, midPos, boxMinX, boxMinY, split, boxMaxY, indices[midPos])); }
@@ -414,7 +420,7 @@ public sealed class Triangulation<T>
             }
             else
             {
-                NthElement(indices, lo, midPos, hi, (a, b) => _vertices[a].Y.CompareTo(_vertices[b].Y));
+                NthElement(indices, lo, midPos, hi, new VertexYComparer(_vertices));
                 T split = _vertices[indices[midPos]].Y;
                 InsertVertex(indices[midPos], parent);
                 if (lo < midPos) { queue.Enqueue((lo, midPos, boxMinX, boxMinY, boxMaxX, split, indices[midPos])); }
@@ -427,12 +433,27 @@ public sealed class Triangulation<T>
     // nth_element — O(n) average quickselect for spatial BFS partitioning
     // -------------------------------------------------------------------------
 
+    private readonly struct VertexXComparer : IComparer<int>
+    {
+        private readonly IReadOnlyList<V2d<T>> _vertices;
+        public VertexXComparer(IReadOnlyList<V2d<T>> vertices) => _vertices = vertices;
+        public int Compare(int a, int b) => _vertices[a].X.CompareTo(_vertices[b].X);
+    }
+
+    private readonly struct VertexYComparer : IComparer<int>
+    {
+        private readonly IReadOnlyList<V2d<T>> _vertices;
+        public VertexYComparer(IReadOnlyList<V2d<T>> vertices) => _vertices = vertices;
+        public int Compare(int a, int b) => _vertices[a].Y.CompareTo(_vertices[b].Y);
+    }
+
     /// <summary>
     /// Rearranges <paramref name="arr"/> in [<paramref name="lo"/>, <paramref name="hi"/>)
     /// so the element at position <paramref name="nth"/> is the one that would be there
     /// after a full sort; elements before it are ≤ it and elements after are ≥ it.
     /// </summary>
-    private static void NthElement(int[] arr, int lo, int nth, int hi, Comparison<int> cmp)
+    private static void NthElement<TComparer>(int[] arr, int lo, int nth, int hi, TComparer cmp)
+        where TComparer : struct, IComparer<int>
     {
         while (lo < hi - 1)
         {
@@ -442,7 +463,7 @@ public sealed class Triangulation<T>
             int store = lo;
             for (int i = lo; i < hi - 1; i++)
             {
-                if (cmp(arr[i], arr[hi - 1]) < 0)
+                if (cmp.Compare(arr[i], arr[hi - 1]) < 0)
                 {
                     (arr[store], arr[i]) = (arr[i], arr[store]);
                     store++;
@@ -463,9 +484,11 @@ public sealed class Triangulation<T>
             ? _kdTree.Nearest(_vertices[iV].X, _vertices[iV].Y, _vertices)
             : 0;
         var (iT, iTopo) = WalkingSearchTrianglesAt(iV, near);
-        var stack = iTopo == Indices.NoNeighbor
-            ? InsertVertexInsideTriangle(iV, iT)
-            : InsertVertexOnEdge(iV, iT, iTopo, handleFixedSplitEdge: false);
+        var stack = new Stack<int>(4);
+        if (iTopo == Indices.NoNeighbor)
+            InsertVertexInsideTriangle(iV, iT, stack);
+        else
+            InsertVertexOnEdge(iV, iT, iTopo, handleFixedSplitEdge: false, stack);
 
         int _dbgFlipIter2 = 0;
         while (stack.Count > 0)
@@ -588,7 +611,7 @@ public sealed class Triangulation<T>
     // Insert vertex inside triangle or on edge
     // -------------------------------------------------------------------------
 
-    private Stack<int> InsertVertexInsideTriangle(int v, int iT)
+    private void InsertVertexInsideTriangle(int v, int iT, Stack<int> stack)
     {
         int iNewT1 = AddTriangle();
         int iNewT2 = AddTriangle();
@@ -606,14 +629,13 @@ public sealed class Triangulation<T>
         ChangeNeighbor(n2, iT, iNewT1);
         ChangeNeighbor(n3, iT, iNewT2);
 
-        var stack = new Stack<int>(3);
+        stack.Clear();
         stack.Push(iT);
         stack.Push(iNewT1);
         stack.Push(iNewT2);
-        return stack;
     }
 
-    private Stack<int> InsertVertexOnEdge(int v, int iT1, int iT2, bool handleFixedSplitEdge)
+    private void InsertVertexOnEdge(int v, int iT1, int iT2, bool handleFixedSplitEdge, Stack<int> stack)
     {
         int iTnew1 = AddTriangle();
         int iTnew2 = AddTriangle();
@@ -649,12 +671,11 @@ public sealed class Triangulation<T>
                 SplitFixedEdge(sharedEdge, v);
         }
 
-        var stack = new Stack<int>(4);
+        stack.Clear();
         stack.Push(iT1);
         stack.Push(iTnew2);
         stack.Push(iT2);
         stack.Push(iTnew1);
-        return stack;
     }
 
     // -------------------------------------------------------------------------
@@ -760,7 +781,11 @@ public sealed class Triangulation<T>
     private void InsertEdgeIteration(
         Edge edge, Edge originalEdge,
         List<Edge> remaining,
-        List<TriangulatePseudoPolygonTask> tppIterations)
+        List<TriangulatePseudoPolygonTask> tppIterations,
+        List<int> polyL,
+        List<int> polyR,
+        Dictionary<Edge, int> outerTris,
+        List<int> intersected)
     {
         int iA = edge.V1, iB = edge.V2;
         if (iA == iB) return;
@@ -786,14 +811,16 @@ public sealed class Triangulation<T>
             return;
         }
 
-        var polyL = new List<int>(8) { iA, iVL };
-        var polyR = new List<int>(8) { iA, iVR };
-        var outerTris = new Dictionary<Edge, int>
-        {
-            [new Edge(iA, iVL)] = CdtUtils.EdgeNeighbor(_triangles[iT], iA, iVL),
-            [new Edge(iA, iVR)] = CdtUtils.EdgeNeighbor(_triangles[iT], iA, iVR),
-        };
-        var intersected = new List<int>(8) { iT };
+        polyL.Clear();
+        polyR.Clear();
+        outerTris.Clear();
+        intersected.Clear();
+
+        polyL.Add(iA); polyL.Add(iVL);
+        polyR.Add(iA); polyR.Add(iVR);
+        outerTris[new Edge(iA, iVL)] = CdtUtils.EdgeNeighbor(_triangles[iT], iA, iVL);
+        outerTris[new Edge(iA, iVR)] = CdtUtils.EdgeNeighbor(_triangles[iT], iA, iVR);
+        intersected.Add(iT);
 
         int iV = iA;
         var t = _triangles[iT];
@@ -1241,7 +1268,8 @@ public sealed class Triangulation<T>
     {
         int iSplit = _vertices.Count;
         AddNewVertex(splitVert, Indices.NoNeighbor);
-        var stack = InsertVertexOnEdge(iSplit, iT, iTopo, handleFixedSplitEdge: false);
+        var stack = new Stack<int>(4);
+        InsertVertexOnEdge(iSplit, iT, iTopo, handleFixedSplitEdge: false, stack);
         TryAddVertexToLocator(iSplit);
         EnsureDelaunayByEdgeFlips(iSplit, stack);
         SplitFixedEdge(edge, iSplit);

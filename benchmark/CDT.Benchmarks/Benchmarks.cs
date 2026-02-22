@@ -4,6 +4,7 @@
 
 using BenchmarkDotNet.Attributes;
 using BenchmarkDotNet.Configs;
+using BenchmarkDotNet.Diagnosers;
 using BenchmarkDotNet.Running;
 using CDT;
 
@@ -59,6 +60,7 @@ internal static class BenchmarkInputReader
 /// ~2 600 constraint edges) – the same dataset used in the C++ CDT benchmarks.
 /// </summary>
 [MemoryDiagnoser]
+[EventPipeProfiler(EventPipeProfile.CpuSampling)]
 [GroupBenchmarksBy(BenchmarkLogicalGroupRule.ByCategory)]
 [CategoriesColumn]
 [ShortRunJob]
@@ -151,6 +153,7 @@ public class ConstrainedSwedenBenchmarks
 /// to measure per-vertex overhead without the noise of large datasets.
 /// </summary>
 [MemoryDiagnoser]
+[EventPipeProfiler(EventPipeProfile.CpuSampling)]
 [GroupBenchmarksBy(BenchmarkLogicalGroupRule.ByCategory)]
 [CategoriesColumn]
 [ShortRunJob]
