@@ -60,17 +60,17 @@ jobs:
       # Windows: test full solution
       - name: Test
         if: runner.os == 'Windows'
-        run: dotnet test --no-build -c Release --verbosity normal --collect:"XPlat Code Coverage" --results-directory ./coverage
+        run: dotnet test --no-build -c Release --verbosity normal /p:CollectCoverage=true /p:CoverletOutputFormat=cobertura /p:CoverletOutput=${{ github.workspace }}/coverage/coverage.cobertura.xml
 
       # Linux: test only CDT.Tests (CDT.Viz has no tests; benchmark is not a test project)
       - name: Test
         if: runner.os == 'Linux'
-        run: dotnet test --no-build -c Release --verbosity normal --collect:"XPlat Code Coverage" --results-directory ./coverage test/CDT.Tests/CDT.Tests.csproj
+        run: dotnet test --no-build -c Release --verbosity normal /p:CollectCoverage=true /p:CoverletOutputFormat=cobertura /p:CoverletOutput=${{ github.workspace }}/coverage/coverage.cobertura.xml test/CDT.Tests/CDT.Tests.csproj
 
       - name: Generate coverage report
         uses: danielpalme/ReportGenerator-GitHub-Action@5
         with:
-          reports: ./coverage/**/coverage.cobertura.xml
+          reports: ${{ github.workspace }}/coverage/coverage.cobertura.xml
           targetdir: coveragereport
           reporttypes: MarkdownSummaryGithub
 
