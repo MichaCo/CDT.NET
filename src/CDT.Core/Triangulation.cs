@@ -106,9 +106,6 @@ public sealed class Triangulation<T>
     private SuperGeometryType _superGeomType;
     private int _nTargetVerts;
 
-    // Reusable flip stack — cleared before each use inside InsertVertex
-    private readonly Stack<int> _flipStack = new(4);
-
     // For each vertex: one adjacent triangle index
     private int[] _vertTris = [];
     private int _vertTrisCount;
@@ -409,6 +406,12 @@ public sealed class Triangulation<T>
         TryAddVertexToLocator(iVert);
     }
 
+    private void InsertVertex(int iVert, int walkStart)
+    {
+        var stack = new Stack<int>(4);
+        InsertVertex(iVert, walkStart, stack);
+    }
+
     private void InsertVertex(int iVert, Stack<int> stack)
     {
         int near = _kdTree != null
@@ -423,8 +426,7 @@ public sealed class Triangulation<T>
         int near = _kdTree != null
             ? _kdTree.Nearest(_vertices[iVert].X, _vertices[iVert].Y, _vertices)
             : 0;
-        _flipStack.Clear(); // defensive: EnsureDelaunayByEdgeFlips always drains it, but be explicit
-        InsertVertex(iVert, near, _flipStack);
+        InsertVertex(iVert, near);
     }
 
     private void InsertVertices_Randomized(int superGeomVertCount)
@@ -542,7 +544,6 @@ public sealed class Triangulation<T>
             InsertVertexOnEdge(iV, iT, iTopo, handleFixedSplitEdge: false, stack);
 
         int _dbgFlipIter2 = 0;
-        bool hasFixedEdges = _fixedEdges.Count > 0;  // hoist — read once
         while (stack.Count > 0)
         {
             if (++_dbgFlipIter2 > 1_000_000) throw new InvalidOperationException($"InsertVertex_FlipFixed infinite loop, iV={iV}");
@@ -551,7 +552,7 @@ public sealed class Triangulation<T>
                 out int itopo, out int iv2, out int iv3, out int iv4,
                 out int n1, out int n2, out int n3, out int n4);
 
-            if (itopo != Indices.NoNeighbor && IsFlipNeeded(iV, iv2, iv3, iv4, hasFixedEdges))
+            if (itopo != Indices.NoNeighbor && IsFlipNeeded(iV, iv2, iv3, iv4))
             {
                 var flippedEdge = new Edge(iv2, iv4);
                 if (_fixedEdges.Contains(flippedEdge))
@@ -566,7 +567,6 @@ public sealed class Triangulation<T>
 
     private void EnsureDelaunayByEdgeFlips(int iV1, Stack<int> triStack)
     {
-        bool hasFixedEdges = _fixedEdges.Count > 0;  // hoist — read once
         int _dbgFlipIter = 0;
         while (triStack.Count > 0)
         {
@@ -576,7 +576,7 @@ public sealed class Triangulation<T>
             EdgeFlipInfo(iT, iV1,
                 out int iTopo, out int iV2, out int iV3, out int iV4,
                 out int n1, out int n2, out int n3, out int n4);
-            if (iTopo != Indices.NoNeighbor && IsFlipNeeded(iV1, iV2, iV3, iV4, hasFixedEdges))
+            if (iTopo != Indices.NoNeighbor && IsFlipNeeded(iV1, iV2, iV3, iV4))
             {
                 FlipEdge(iT, iTopo, iV1, iV2, iV3, iV4, n1, n2, n3, n4);
                 triStack.Push(iT);
@@ -775,10 +775,10 @@ public sealed class Triangulation<T>
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private bool IsFlipNeeded(int iV1, int iV2, int iV3, int iV4, bool hasFixedEdges)
+    private bool IsFlipNeeded(int iV1, int iV2, int iV3, int iV4)
     {
         // Skip HashSet lookup when there are no fixed edges (pure vertex-insertion path).
-        if (hasFixedEdges && _fixedEdges.Contains(new Edge(iV2, iV4))) return false;
+        if (_fixedEdges.Count > 0 && _fixedEdges.Contains(new Edge(iV2, iV4))) return false;
 
         var v1 = _vertices[iV1];
         var v2 = _vertices[iV2];
@@ -1436,11 +1436,9 @@ public sealed class Triangulation<T>
     private void RemoveTriangles(HashSet<int> removed)
     {
         if (removed.Count == 0) return;
-
         // Build a flat bool[] for O(1) indexed lookup — replaces all HashSet.Contains calls
         var isRemoved = new bool[_trianglesCount];
         foreach (int i in removed) isRemoved[i] = true;
-
         // Build compact mapping: old index → new index
         var mapping = new int[_trianglesCount];
         int newIdx = 0;
@@ -1476,30 +1474,27 @@ public sealed class Triangulation<T>
         var depths = new ushort[_trianglesCount];
         for (int i = 0; i < depths.Length; i++) depths[i] = ushort.MaxValue;
 
+        // Find a triangle touching the super-triangle vertex 0
         int seedTri = _vertTrisCount > 0 ? _vertTris[0] : Indices.NoNeighbor;
         if (seedTri == Indices.NoNeighbor && _trianglesCount > 0) seedTri = 0;
 
-        var currentSeeds = new Stack<int>();
-        var nextSeeds = new Stack<int>();
-        var behindBoundary = new Dictionary<int, ushort>();
-        currentSeeds.Push(seedTri);
+        var layerSeeds = new Stack<int>();
+        layerSeeds.Push(seedTri);
         ushort depth = 0;
 
-        while (currentSeeds.Count > 0)
+        while (layerSeeds.Count > 0)
         {
-            behindBoundary.Clear();
-            PeelLayer(currentSeeds, depth, depths, behindBoundary);
-            nextSeeds.Clear();
-            foreach (var kv in behindBoundary) nextSeeds.Push(kv.Key);
-            (currentSeeds, nextSeeds) = (nextSeeds, currentSeeds); // swap — no alloc
+            var nextLayer = PeelLayer(layerSeeds, depth, depths);
+            layerSeeds = new Stack<int>(nextLayer.Keys);
             depth++;
         }
         return depths;
     }
 
-    private void PeelLayer(
-        Stack<int> seeds, ushort layerDepth, ushort[] triDepths, Dictionary<int, ushort> behindBoundary)
+    private Dictionary<int, ushort> PeelLayer(
+        Stack<int> seeds, ushort layerDepth, ushort[] triDepths)
     {
+        var behindBoundary = new Dictionary<int, ushort>();
         while (seeds.Count > 0)
         {
             int iT = seeds.Pop();
@@ -1530,6 +1525,7 @@ public sealed class Triangulation<T>
                 }
             }
         }
+        return behindBoundary;
     }
 
     // -------------------------------------------------------------------------
