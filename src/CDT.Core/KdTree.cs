@@ -145,7 +145,7 @@ internal sealed class KdTree<T>
         }
     }
 
-    /// <summary>Finds the nearest point to <paramref name="query"/> in the external buffer.</summary>
+    /// <summary>Finds the nearest point to <paramref name="points"/> in the external buffer.</summary>
     public int Nearest(T qx, T qy, IReadOnlyList<V2d<T>> points)
     {
         int resultIdx = 0;
