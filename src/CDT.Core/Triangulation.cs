@@ -423,6 +423,7 @@ public sealed class Triangulation<T>
         int near = _kdTree != null
             ? _kdTree.Nearest(_vertices[iVert].X, _vertices[iVert].Y, _vertices)
             : 0;
+        _flipStack.Clear(); // defensive: EnsureDelaunayByEdgeFlips always drains it, but be explicit
         InsertVertex(iVert, near, _flipStack);
     }
 
