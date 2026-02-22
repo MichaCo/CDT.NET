@@ -31,10 +31,10 @@ public abstract class TriangulationTestsBase<T>
 
         Assert.True(TopologyVerifier.VerifyTopology(cdt));
         // 4 user vertices + 3 super-triangle vertices
-        Assert.Equal(7, cdt.Vertices.Count);
+        Assert.Equal(7, cdt.Vertices.Length);
         Assert.Empty(cdt.FixedEdges);
         // 4 vertices inside a super-triangle → 9 triangles
-        Assert.Equal(9, cdt.Triangles.Count);
+        Assert.Equal(9, cdt.Triangles.Length);
     }
 
     [Fact]
@@ -45,8 +45,8 @@ public abstract class TriangulationTestsBase<T>
         cdt.EraseSuperTriangle();
 
         Assert.True(TopologyVerifier.VerifyTopology(cdt));
-        Assert.Equal(4, cdt.Vertices.Count);
-        Assert.Equal(2, cdt.Triangles.Count);
+        Assert.Equal(4, cdt.Vertices.Length);
+        Assert.Equal(2, cdt.Triangles.Length);
     }
 
     [Fact]
@@ -60,12 +60,12 @@ public abstract class TriangulationTestsBase<T>
         cdt.EraseSuperTriangle();
 
         Assert.True(TopologyVerifier.VerifyTopology(cdt));
-        Assert.Equal(4, cdt.Vertices.Count);
+        Assert.Equal(4, cdt.Vertices.Length);
         Assert.Single(cdt.FixedEdges);
-        Assert.Equal(2, cdt.Triangles.Count);
+        Assert.Equal(2, cdt.Triangles.Length);
         Assert.Contains(constraint, cdt.FixedEdges);
 
-        var edges = CdtUtils.ExtractEdgesFromTriangles(cdt.Triangles);
+        var edges = CdtUtils.ExtractEdgesFromTriangles(cdt.Triangles.Span);
         Assert.Contains(constraint, edges);
     }
 
@@ -92,7 +92,7 @@ public abstract class TriangulationTestsBase<T>
         cdt.InsertVertices([Pt(0, 0), Pt(1, 0), Pt(0.5, 1)]);
         cdt.EraseSuperTriangle();
 
-        var edges = CdtUtils.ExtractEdgesFromTriangles(cdt.Triangles);
+        var edges = CdtUtils.ExtractEdgesFromTriangles(cdt.Triangles.Span);
         Assert.Equal(3, edges.Count); // one triangle → 3 edges
     }
 
@@ -109,7 +109,7 @@ public abstract class TriangulationTestsBase<T>
         cdt.EraseSuperTriangle();
 
         Assert.True(TopologyVerifier.VerifyTopology(cdt));
-        Assert.Equal(2, cdt.Triangles.Count);
+        Assert.Equal(2, cdt.Triangles.Length);
         Assert.Single(cdt.FixedEdges);
     }
 
@@ -130,8 +130,8 @@ public abstract class TriangulationTestsBase<T>
         cdtProvided.InsertVertices(pts);
         cdtProvided.EraseSuperTriangle();
 
-        Assert.Equal(cdtAuto.Triangles.Count, cdtProvided.Triangles.Count);
-        Assert.Equal(cdtAuto.Vertices.Count, cdtProvided.Vertices.Count);
+        Assert.Equal(cdtAuto.Triangles.Length, cdtProvided.Triangles.Length);
+        Assert.Equal(cdtAuto.Vertices.Length, cdtProvided.Vertices.Length);
     }
 
     // -------------------------------------------------------------------------
@@ -186,7 +186,7 @@ public abstract class TriangulationTestsBase<T>
 
         Assert.True(TopologyVerifier.VerifyTopology(cdt));
         // Square → 2 triangles
-        Assert.Equal(2, cdt.Triangles.Count);
+        Assert.Equal(2, cdt.Triangles.Length);
     }
 
     // -------------------------------------------------------------------------
@@ -201,8 +201,8 @@ public abstract class TriangulationTestsBase<T>
         cdt.EraseSuperTriangle();
 
         Assert.True(TopologyVerifier.VerifyTopology(cdt));
-        Assert.Equal(3, cdt.Vertices.Count);
-        Assert.Single(cdt.Triangles);
+        Assert.Equal(3, cdt.Vertices.Length);
+        Assert.Equal(1, cdt.Triangles.Length);
     }
 
     // -------------------------------------------------------------------------
@@ -220,7 +220,7 @@ public abstract class TriangulationTestsBase<T>
         cdt.EraseSuperTriangle();
 
         Assert.True(TopologyVerifier.VerifyTopology(cdt));
-        Assert.Equal(5, cdt.Vertices.Count);
+        Assert.Equal(5, cdt.Vertices.Length);
     }
 }
 

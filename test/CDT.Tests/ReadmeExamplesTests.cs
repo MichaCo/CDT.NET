@@ -24,8 +24,8 @@ public sealed class ReadmeExamplesTests
         cdt.EraseSuperTriangle(); // produces convex hull
 
         Assert.True(TopologyVerifier.VerifyTopology(cdt));
-        Assert.Equal(5, cdt.Vertices.Count);
-        Assert.True(cdt.Triangles.Count > 0);
+        Assert.Equal(5, cdt.Vertices.Length);
+        Assert.True(cdt.Triangles.Length > 0);
         Assert.Empty(cdt.FixedEdges);
     }
 
@@ -51,8 +51,8 @@ public sealed class ReadmeExamplesTests
         cdt.EraseOuterTriangles(); // removes everything outside the boundary
 
         Assert.True(TopologyVerifier.VerifyTopology(cdt));
-        Assert.Equal(4, cdt.Vertices.Count);
-        Assert.Equal(2, cdt.Triangles.Count);
+        Assert.Equal(4, cdt.Vertices.Length);
+        Assert.Equal(2, cdt.Triangles.Length);
         Assert.Equal(4, cdt.FixedEdges.Count);
     }
 
@@ -83,8 +83,8 @@ public sealed class ReadmeExamplesTests
         cdt.EraseOuterTrianglesAndHoles(); // removes outer AND fills holes automatically
 
         Assert.True(TopologyVerifier.VerifyTopology(cdt));
-        Assert.Equal(8, cdt.Vertices.Count);
-        Assert.True(cdt.Triangles.Count > 0);
+        Assert.Equal(8, cdt.Vertices.Length);
+        Assert.True(cdt.Triangles.Length > 0);
     }
 
     // -------------------------------------------------------------------------
@@ -109,9 +109,9 @@ public sealed class ReadmeExamplesTests
         cdt.EraseOuterTriangles();
 
         Assert.True(TopologyVerifier.VerifyTopology(cdt));
-        Assert.True(cdt.Triangles.Count > 0);
+        Assert.True(cdt.Triangles.Length > 0);
         // ConformToEdges may have added midpoints, so vertex count >= 4
-        Assert.True(cdt.Vertices.Count >= 4);
+        Assert.True(cdt.Vertices.Length >= 4);
     }
 
     // -------------------------------------------------------------------------
@@ -161,7 +161,7 @@ public sealed class ReadmeExamplesTests
         cdt.EraseSuperTriangle();
 
         // Extract all unique edges from every triangle
-        HashSet<Edge> allEdges = CdtUtils.ExtractEdgesFromTriangles(cdt.Triangles);
+        HashSet<Edge> allEdges = CdtUtils.ExtractEdgesFromTriangles(cdt.Triangles.Span);
 
         // A single triangle has exactly 3 edges
         Assert.Equal(3, allEdges.Count);
@@ -197,6 +197,6 @@ public sealed class ReadmeExamplesTests
 
         Assert.True(TopologyVerifier.VerifyTopology(cdt));
         // An extra vertex is added at the intersection
-        Assert.True(cdt.Vertices.Count > 4);
+        Assert.True(cdt.Vertices.Length > 4);
     }
 }

@@ -292,10 +292,10 @@ public partial class MainWindow : Window
 
         using var sw = new StreamWriter(dlg.FileName);
         sw.WriteLine("OFF");
-        sw.WriteLine($"{_cdt.Vertices.Count} {_cdt.Triangles.Count} 0");
-        foreach (var v in _cdt.Vertices)
+        sw.WriteLine($"{_cdt.Vertices.Length} {_cdt.Triangles.Length} 0");
+        foreach (var v in _cdt.Vertices.Span)
             sw.WriteLine(FormattableString.Invariant($"{v.X} {v.Y} 0"));
-        foreach (var t in _cdt.Triangles)
+        foreach (var t in _cdt.Triangles.Span)
             sw.WriteLine($"3 {t.V0} {t.V1} {t.V2}");
         StatusText.Text = $"Saved {dlg.FileName}";
     }
@@ -456,16 +456,16 @@ public partial class MainWindow : Window
         }
 
         // Push to visual
-        _visual.Vertices = _cdt.Vertices.ToList();
-        _visual.Triangles = _cdt.Triangles.ToList();
+        _visual.Vertices = [.. _cdt.Vertices.Span];
+        _visual.Triangles = [.. _cdt.Triangles.Span];
         _visual.FixedEdges = new HashSet<Edge>(_cdt.FixedEdges);
         _visual.ShowSuperTriangle = FinalizeMode.SelectedIndex == 0;
         _visual.ShowPoints = ShowPoints.IsChecked == true;
         _visual.ShowIndices = ShowIndices.IsChecked == true;
         _visual.InvalidateVisual();
 
-        StatsLabel.Text = $"Vertices: {_cdt.Vertices.Count}\n" +
-                          $"Triangles: {_cdt.Triangles.Count}\n" +
+        StatsLabel.Text = $"Vertices: {_cdt.Vertices.Length}\n" +
+                          $"Triangles: {_cdt.Triangles.Length}\n" +
                           $"Fixed edges: {_cdt.FixedEdges.Count}";
 
         if (!TopologyVerifier.VerifyTopology(_cdt))

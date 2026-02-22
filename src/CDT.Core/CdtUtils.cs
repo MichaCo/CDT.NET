@@ -143,12 +143,12 @@ public static class CdtUtils
     // -------------------------------------------------------------------------
 
     /// <summary>Extracts all unique edges from a triangle list.</summary>
-    /// <param name="triangles">The triangle list to extract edges from.</param>
+    /// <param name="triangles">The triangles to extract edges from.</param>
     /// <returns>A set containing all unique edges in the triangulation.</returns>
-    public static HashSet<Edge> ExtractEdgesFromTriangles(IReadOnlyList<Triangle> triangles)
+    public static HashSet<Edge> ExtractEdgesFromTriangles(ReadOnlySpan<Triangle> triangles)
     {
-        var edges = new HashSet<Edge>(triangles.Count * 3);
-        foreach (var t in triangles)
+        var edges = new HashSet<Edge>(triangles.Length * 3);
+        foreach (ref readonly var t in triangles)
         {
             edges.Add(new Edge(t.V0, t.V1));
             edges.Add(new Edge(t.V1, t.V2));
@@ -167,12 +167,12 @@ public static class CdtUtils
     /// A read-only list of read-only lists: for each vertex index, the list of adjacent triangle indices.
     /// </returns>
     public static IReadOnlyList<IReadOnlyList<int>> CalculateTrianglesByVertex(
-        IReadOnlyList<Triangle> triangles,
+        ReadOnlySpan<Triangle> triangles,
         int verticesCount)
     {
         var result = new List<int>[verticesCount];
         for (int i = 0; i < verticesCount; i++) result[i] = new List<int>();
-        for (int i = 0; i < triangles.Count; i++)
+        for (int i = 0; i < triangles.Length; i++)
         {
             var t = triangles[i];
             result[t.V0].Add(i);

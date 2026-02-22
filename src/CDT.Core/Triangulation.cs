@@ -66,10 +66,10 @@ public sealed class Triangulation<T>
     // -------------------------------------------------------------------------
 
     /// <summary>All vertices in the triangulation (including super-triangle vertices while not finalized).</summary>
-    public IReadOnlyList<V2d<T>> Vertices => _vertices;
+    public ReadOnlyMemory<V2d<T>> Vertices => new(_vertices, 0, _verticesCount);
 
     /// <summary>All triangles in the triangulation.</summary>
-    public IReadOnlyList<Triangle> Triangles => _triangles;
+    public ReadOnlyMemory<Triangle> Triangles => new(_triangles, 0, _trianglesCount);
 
     /// <summary>Set of constraint (fixed) edges.</summary>
     public IReadOnlySet<Edge> FixedEdges => _fixedEdges;
@@ -90,8 +90,10 @@ public sealed class Triangulation<T>
     // Private fields
     // -------------------------------------------------------------------------
 
-    private readonly List<V2d<T>> _vertices = new();
-    private readonly List<Triangle> _triangles = new();
+    private V2d<T>[] _vertices = [];
+    private int _verticesCount;
+    private Triangle[] _triangles = [];
+    private int _trianglesCount;
     private readonly HashSet<Edge> _fixedEdges = new();
     private readonly Dictionary<Edge, ushort> _overlapCount = new();
     private readonly Dictionary<Edge, List<Edge>> _pieceToOriginals = new();
@@ -105,7 +107,8 @@ public sealed class Triangulation<T>
     private int _nTargetVerts;
 
     // For each vertex: one adjacent triangle index
-    private readonly List<int> _vertTris = new();
+    private int[] _vertTris = [];
+    private int _vertTrisCount;
 
     // KD-tree for nearest-point location
     private KdTree<T>? _kdTree;
@@ -153,16 +156,16 @@ public sealed class Triangulation<T>
     {
         if (newVertices.Count == 0) return;
 
-        bool isFirstInsertion = _kdTree == null && _vertices.Count == 0;
+        bool isFirstInsertion = _kdTree == null && _verticesCount == 0;
 
         // Pre-allocate backing arrays once we know the incoming vertex count.
         // Euler's formula: a planar triangulation of N points has ~2N triangles.
         if (isFirstInsertion)
         {
             int n = newVertices.Count;
-            _vertices.EnsureCapacity(n + Indices.SuperTriangleVertexCount);
-            _vertTris.EnsureCapacity(n + Indices.SuperTriangleVertexCount);
-            _triangles.EnsureCapacity(2 * n + 4);
+            ArrayEnsureCapacity(ref _vertices, n + Indices.SuperTriangleVertexCount);
+            ArrayEnsureCapacity(ref _vertTris, n + Indices.SuperTriangleVertexCount);
+            ArrayEnsureCapacity(ref _triangles, 2 * n + 4);
         }
 
         // Build bounding box of new vertices
@@ -179,7 +182,7 @@ public sealed class Triangulation<T>
             InitKdTree();
         }
 
-        int insertStart = _vertices.Count;
+        int insertStart = _verticesCount;
         foreach (var v in newVertices)
         {
             AddNewVertex(v, Indices.NoNeighbor);
@@ -200,7 +203,7 @@ public sealed class Triangulation<T>
         {
             // AsProvided: sequential order, KD-tree walk-start
             var stack = new Stack<int>(4);
-            for (int iV = insertStart; iV < _vertices.Count; iV++)
+            for (int iV = insertStart; iV < _verticesCount; iV++)
             {
                 InsertVertex(iV, stack);
             }
@@ -269,7 +272,7 @@ public sealed class Triangulation<T>
     {
         if (_superGeomType != SuperGeometryType.SuperTriangle) return;
         var toErase = new HashSet<int>();
-        for (int i = 0; i < _triangles.Count; i++)
+        for (int i = 0; i < _trianglesCount; i++)
         {
             if (CdtUtils.TouchesSuperTriangle(_triangles[i]))
                 toErase.Add(i);
@@ -296,7 +299,7 @@ public sealed class Triangulation<T>
     {
         var depths = CalculateTriangleDepths();
         var toErase = new HashSet<int>();
-        for (int i = 0; i < _triangles.Count; i++)
+        for (int i = 0; i < _trianglesCount; i++)
         {
             if (depths[i] % 2 == 0) toErase.Add(i);
         }
@@ -307,7 +310,7 @@ public sealed class Triangulation<T>
     /// Indicates whether the triangulation has been finalized (i.e., one of the
     /// Erase methods was called). Further modification is not possible.
     /// </summary>
-    public bool IsFinalized => _vertTris.Count == 0 && _vertices.Count > 0;
+    public bool IsFinalized => _vertTrisCount == 0 && _verticesCount > 0;
 
     // -------------------------------------------------------------------------
     // Internal helpers – super-triangle setup
@@ -351,8 +354,8 @@ public sealed class Triangulation<T>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private void AddNewVertex(V2d<T> pos, int iTri)
     {
-        _vertices.Add(pos);
-        _vertTris.Add(iTri);
+        ArrayAdd(ref _vertices, ref _verticesCount, pos);
+        ArrayAdd(ref _vertTris, ref _vertTrisCount, iTri);
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -361,9 +364,31 @@ public sealed class Triangulation<T>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private int AddTriangle(Triangle t)
     {
-        int idx = _triangles.Count;
-        _triangles.Add(t);
+        int idx = _trianglesCount;
+        ArrayAdd(ref _triangles, ref _trianglesCount, t);
         return idx;
+    }
+
+    // -------------------------------------------------------------------------
+    // Low-level array-growth helpers
+    // -------------------------------------------------------------------------
+
+    // Maximum element count for which a temporary int[] is stackalloc'd instead of heap-allocated.
+    private const int StackAllocThreshold = 512;
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static void ArrayAdd<TItem>(ref TItem[] arr, ref int count, TItem item)
+    {
+        if (count == arr.Length)
+            Array.Resize(ref arr, arr.Length == 0 ? 4 : arr.Length * 2);
+        arr[count++] = item;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static void ArrayEnsureCapacity<TItem>(ref TItem[] arr, int capacity)
+    {
+        if (arr.Length < capacity)
+            Array.Resize(ref arr, capacity);
     }
 
     // -------------------------------------------------------------------------
@@ -406,8 +431,8 @@ public sealed class Triangulation<T>
 
     private void InsertVertices_Randomized(int superGeomVertCount)
     {
-        int count = _vertices.Count - superGeomVertCount;
-        var indices = new int[count];
+        int count = _verticesCount - superGeomVertCount;
+        Span<int> indices = count <= StackAllocThreshold ? stackalloc int[count] : new int[count];
         for (int i = 0; i < count; i++) { indices[i] = superGeomVertCount + i; }
         for (int i = count - 1; i > 0; i--)
         {
@@ -420,10 +445,10 @@ public sealed class Triangulation<T>
 
     private void InsertVertices_KDTreeBFS(int superGeomVertCount, Box2d<T> box)
     {
-        int vertexCount = _vertices.Count - superGeomVertCount;
+        int vertexCount = _verticesCount - superGeomVertCount;
         if (vertexCount <= 0) { return; }
 
-        var indices = new int[vertexCount];
+        Span<int> indices = vertexCount <= StackAllocThreshold ? stackalloc int[vertexCount] : new int[vertexCount];
         for (int i = 0; i < vertexCount; i++) { indices[i] = superGeomVertCount + i; }
 
         var queue = new Queue<(int lo, int hi, T boxMinX, T boxMinY, T boxMaxX, T boxMaxY, int parent)>();
@@ -464,15 +489,15 @@ public sealed class Triangulation<T>
 
     private readonly struct VertexXComparer : IComparer<int>
     {
-        private readonly IReadOnlyList<V2d<T>> _vertices;
-        public VertexXComparer(IReadOnlyList<V2d<T>> vertices) => _vertices = vertices;
+        private readonly V2d<T>[] _vertices;
+        public VertexXComparer(V2d<T>[] vertices) => _vertices = vertices;
         public int Compare(int a, int b) => _vertices[a].X.CompareTo(_vertices[b].X);
     }
 
     private readonly struct VertexYComparer : IComparer<int>
     {
-        private readonly IReadOnlyList<V2d<T>> _vertices;
-        public VertexYComparer(IReadOnlyList<V2d<T>> vertices) => _vertices = vertices;
+        private readonly V2d<T>[] _vertices;
+        public VertexYComparer(V2d<T>[] vertices) => _vertices = vertices;
         public int Compare(int a, int b) => _vertices[a].Y.CompareTo(_vertices[b].Y);
     }
 
@@ -481,7 +506,7 @@ public sealed class Triangulation<T>
     /// so the element at position <paramref name="nth"/> is the one that would be there
     /// after a full sort; elements before it are ≤ it and elements after are ≥ it.
     /// </summary>
-    private static void NthElement<TComparer>(int[] arr, int lo, int nth, int hi, TComparer cmp)
+    private static void NthElement<TComparer>(Span<int> arr, int lo, int nth, int hi, TComparer cmp)
         where TComparer : struct, IComparer<int>
     {
         while (lo < hi - 1)
@@ -594,7 +619,7 @@ public sealed class Triangulation<T>
     /// <summary>Brute-force O(n) fallback: scan all triangles to find the one containing <paramref name="pos"/>.</summary>
     private int FindTriangleLinear(V2d<T> pos, out PtTriLocation loc)
     {
-        for (int i = 0; i < _triangles.Count; i++)
+        for (int i = 0; i < _trianglesCount; i++)
         {
             var t = _triangles[i];
             loc = LocatePointTriangle(pos, _vertices[t.V0], _vertices[t.V1], _vertices[t.V2]);
@@ -1020,7 +1045,7 @@ public sealed class Triangulation<T>
             remaining.Add(new ConformToEdgeTask(new Edge(iB, edge.V2), originals, overlaps));
 
         // Insert midpoint and recurse
-        int iMid = _vertices.Count;
+        int iMid = _verticesCount;
         var start = _vertices[iA];
         var end = _vertices[iB];
         AddNewVertex(new V2d<T>((start.X + end.X) / _two, (start.Y + end.Y) / _two), Indices.NoNeighbor);
@@ -1117,10 +1142,11 @@ public sealed class Triangulation<T>
         {
             var outerEdge = new Edge(b, c);
             int outerTri = outerTris[outerEdge];
-            var tri = _triangles[iT]; tri.N1 = Indices.NoNeighbor; _triangles[iT] = tri;
+            ref var tri = ref _triangles[iT];
+            tri.N1 = Indices.NoNeighbor;
             if (outerTri != Indices.NoNeighbor)
             {
-                tri = _triangles[iT]; tri.N1 = outerTri; _triangles[iT] = tri;
+                tri.N1 = outerTri;
                 ChangeNeighbor(outerTri, c, b, iT);
             }
             else outerTris[outerEdge] = iT;
@@ -1136,18 +1162,19 @@ public sealed class Triangulation<T>
         {
             var outerEdge = new Edge(c, a);
             int outerTri = outerTris[outerEdge];
-            var tri = _triangles[iT]; tri.N2 = Indices.NoNeighbor; _triangles[iT] = tri;
+            ref var tri = ref _triangles[iT];
+            tri.N2 = Indices.NoNeighbor;
             if (outerTri != Indices.NoNeighbor)
             {
-                tri = _triangles[iT]; tri.N2 = outerTri; _triangles[iT] = tri;
+                tri.N2 = outerTri;
                 ChangeNeighbor(outerTri, c, a, iT);
             }
             else outerTris[outerEdge] = iT;
         }
 
         // Finalize triangle
-        var parentTri = _triangles[iParent]; parentTri.SetNeighbor(iInParent, iT); _triangles[iParent] = parentTri;
-        var tFinal = _triangles[iT]; tFinal.N0 = iParent; tFinal.V0 = a; tFinal.V1 = b; tFinal.V2 = c; _triangles[iT] = tFinal;
+        ref var parentTri = ref _triangles[iParent]; parentTri.SetNeighbor(iInParent, iT);
+        ref var tFinal = ref _triangles[iT]; tFinal.N0 = iParent; tFinal.V0 = a; tFinal.V1 = b; tFinal.V2 = c;
         SetAdjacentTriangle(c, iT);
     }
 
@@ -1228,20 +1255,18 @@ public sealed class Triangulation<T>
     private void ChangeNeighbor(int iT, int oldN, int newN)
     {
         if (iT == Indices.NoNeighbor) return;
-        var t = _triangles[iT];
+        ref var t = ref _triangles[iT];
         if (t.N0 == oldN) t.N0 = newN;
         else if (t.N1 == oldN) t.N1 = newN;
         else t.N2 = newN;
-        _triangles[iT] = t;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private void ChangeNeighbor(int iT, int va, int vb, int newN)
     {
         if (iT == Indices.NoNeighbor) return;
-        var t = _triangles[iT];
+        ref var t = ref _triangles[iT];
         t.SetNeighbor(CdtUtils.EdgeNeighborIndex(t, va, vb), newN);
-        _triangles[iT] = t;
     }
 
     private void PivotVertexTriangleCW(int v)
@@ -1296,7 +1321,7 @@ public sealed class Triangulation<T>
 
     private int SplitFixedEdgeAt(Edge edge, V2d<T> splitVert, int iT, int iTopo)
     {
-        int iSplit = _vertices.Count;
+        int iSplit = _verticesCount;
         AddNewVertex(splitVert, Indices.NoNeighbor);
         var stack = new Stack<int>(4);
         InsertVertexOnEdge(iSplit, iT, iTopo, handleFixedSplitEdge: false, stack);
@@ -1351,11 +1376,13 @@ public sealed class Triangulation<T>
 
     private void FinalizeTriangulation(HashSet<int> removedTriangles)
     {
-        _vertTris.Clear();
+        _vertTrisCount = 0;
 
         if (_superGeomType == SuperGeometryType.SuperTriangle)
         {
-            _vertices.RemoveRange(0, Indices.SuperTriangleVertexCount);
+            int shift = Indices.SuperTriangleVertexCount;
+            _vertices.AsSpan(shift, _verticesCount - shift).CopyTo(_vertices);
+            _verticesCount -= shift;
             RemapEdgesNoSuperTriangle(_fixedEdges);
             RemapEdgesNoSuperTriangle(_overlapCount);
             RemapEdgesNoSuperTriangle(_pieceToOriginals);
@@ -1366,11 +1393,10 @@ public sealed class Triangulation<T>
         if (_superGeomType == SuperGeometryType.SuperTriangle)
         {
             int offset = Indices.SuperTriangleVertexCount;
-            for (int i = 0; i < _triangles.Count; i++)
+            for (int i = 0; i < _trianglesCount; i++)
             {
-                var t = _triangles[i];
+                ref var t = ref _triangles[i];
                 t.V0 -= offset; t.V1 -= offset; t.V2 -= offset;
-                _triangles[i] = t;
             }
         }
     }
@@ -1411,29 +1437,28 @@ public sealed class Triangulation<T>
     {
         if (removed.Count == 0) return;
         // Build compact mapping: old index → new index
-        var mapping = new int[_triangles.Count];
+        var mapping = new int[_trianglesCount];
         int newIdx = 0;
-        for (int i = 0; i < _triangles.Count; i++)
+        for (int i = 0; i < _trianglesCount; i++)
         {
             if (removed.Contains(i)) { mapping[i] = Indices.NoNeighbor; continue; }
             mapping[i] = newIdx++;
         }
         // Compact triangle list
         int write = 0;
-        for (int i = 0; i < _triangles.Count; i++)
+        for (int i = 0; i < _trianglesCount; i++)
         {
             if (removed.Contains(i)) continue;
             _triangles[write++] = _triangles[i];
         }
-        _triangles.RemoveRange(write, _triangles.Count - write);
+        _trianglesCount = write;
         // Re-map neighbor indices
-        for (int i = 0; i < _triangles.Count; i++)
+        for (int i = 0; i < _trianglesCount; i++)
         {
-            var t = _triangles[i];
+            ref var t = ref _triangles[i];
             t.N0 = t.N0 == Indices.NoNeighbor ? Indices.NoNeighbor : (removed.Contains(t.N0) ? Indices.NoNeighbor : mapping[t.N0]);
             t.N1 = t.N1 == Indices.NoNeighbor ? Indices.NoNeighbor : (removed.Contains(t.N1) ? Indices.NoNeighbor : mapping[t.N1]);
             t.N2 = t.N2 == Indices.NoNeighbor ? Indices.NoNeighbor : (removed.Contains(t.N2) ? Indices.NoNeighbor : mapping[t.N2]);
-            _triangles[i] = t;
         }
     }
 
@@ -1443,12 +1468,12 @@ public sealed class Triangulation<T>
 
     private ushort[] CalculateTriangleDepths()
     {
-        var depths = new ushort[_triangles.Count];
+        var depths = new ushort[_trianglesCount];
         for (int i = 0; i < depths.Length; i++) depths[i] = ushort.MaxValue;
 
         // Find a triangle touching the super-triangle vertex 0
-        int seedTri = _vertTris.Count > 0 ? _vertTris[0] : Indices.NoNeighbor;
-        if (seedTri == Indices.NoNeighbor && _triangles.Count > 0) seedTri = 0;
+        int seedTri = _vertTrisCount > 0 ? _vertTris[0] : Indices.NoNeighbor;
+        if (seedTri == Indices.NoNeighbor && _trianglesCount > 0) seedTri = 0;
 
         var layerSeeds = new Stack<int>();
         layerSeeds.Push(seedTri);
@@ -1507,9 +1532,9 @@ public sealed class Triangulation<T>
     private void InitKdTree()
     {
         var box = new Box2d<T>();
-        box.Envelop(_vertices);
+        box.Envelop(_vertices.AsSpan(0, _verticesCount));
         _kdTree = new KdTree<T>(box.Min.X, box.Min.Y, box.Max.X, box.Max.Y);
-        for (int i = 0; i < _vertices.Count; i++)
+        for (int i = 0; i < _verticesCount; i++)
             _kdTree.Insert(i, _vertices);
     }
 
