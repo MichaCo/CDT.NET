@@ -7,10 +7,21 @@
 
 using System.Runtime.CompilerServices;
 
-namespace CDT;
+namespace CDT.Predicates;
 
-/// <summary>Robust geometric predicates (Lenthe/Shewchuk adaptive).</summary>
-internal static class Predicates
+/// <summary>
+/// Geometric predicates using normal floating-point arithmetic,
+/// falling back to arbitrary precision when needed for robustness.
+/// These are significantly faster than <see cref="PredicatesExact"/> when
+/// the determinant is large (i.e. the non-degenerate case), but produce
+/// the same correct result in all cases.
+/// Corresponds to C++ <c>predicates::adaptive</c>.
+/// </summary>
+/// <remarks>
+/// Reference: https://www.cs.cmu.edu/~quake/robust.html
+/// </remarks>
+/// <seealso cref="PredicatesExact"/>
+public static class PredicatesAdaptive
 {
     // -------------------------------------------------------------------------
     // Error-bound constants (double: eps = 2^-53, float: eps = 2^-24)
@@ -24,15 +35,32 @@ internal static class Predicates
     private const double ResultErrBound = 3.3306690738754716e-16;
     private const float CcwBoundAF = 1.7881393432617188e-7f;
     private const float IccBoundAF = 5.960464477539063e-7f;
-    private const double SplitterD = 134217729.0; // 2^27 + 1
+    internal const double SplitterD = 134217729.0; // 2^27 + 1
 
     // =========================================================================
-    // Orient2D
+    // Orient2d
     // =========================================================================
 
-    /// <summary>Adaptive orient2d for <see cref="double"/>.</summary>
+    /// <summary>
+    /// Adaptive orient2d predicate for <see cref="double"/> coordinates.
+    /// Determines whether point <c>c</c> is to the left of, on, or to the right of
+    /// the directed line from <c>a</c> to <c>b</c>.
+    /// Returns the determinant of {{ax-cx, ay-cy}, {bx-cx, by-cy}}.
+    /// Positive = c is left/above the line a→b; zero = collinear; negative = right/below.
+    /// </summary>
+    /// <param name="ax">X-coordinate of point a.</param>
+    /// <param name="ay">Y-coordinate of point a.</param>
+    /// <param name="bx">X-coordinate of point b.</param>
+    /// <param name="by">Y-coordinate of point b.</param>
+    /// <param name="cx">X-coordinate of point c.</param>
+    /// <param name="cy">Y-coordinate of point c.</param>
+    /// <returns>
+    /// A positive value if c is to the left of line a→b,
+    /// zero if collinear, or a negative value if to the right.
+    /// </returns>
+    /// <seealso cref="PredicatesExact.Orient2d(double, double, double, double, double, double)"/>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static double Orient2D(
+    public static double Orient2d(
         double ax, double ay, double bx, double by, double cx, double cy)
     {
         double acx = ax - cx, bcx = bx - cx;
@@ -85,27 +113,33 @@ internal static class Predicates
         }
 
         // Stage D: exact expansion
-        Span<double> s1 = stackalloc double[4];
-        Span<double> s2 = stackalloc double[4];
-        Span<double> s3 = stackalloc double[4];
-        int s1Len = TwoTwoDiff(acxtail, bcy, acytail, bcx, s1);
-        int s2Len = TwoTwoDiff(acx, bcytail, acy, bcxtail, s2);
-        int s3Len = TwoTwoDiff(acxtail, bcytail, acytail, bcxtail, s3);
-        Span<double> t1 = stackalloc double[8];
-        int t1Len = ExpansionSum(b, bLen, s1, s1Len, t1);
-        Span<double> t2 = stackalloc double[12];
-        int t2Len = ExpansionSum(t1, t1Len, s2, s2Len, t2);
-        Span<double> d = stackalloc double[16];
-        int dLen = ExpansionSum(t2, t2Len, s3, s3Len, d);
-        return MostSignificant(d, dLen);
+        return PredicatesExact.Orient2d(ax, ay, bx, by, cx, cy);
     }
 
     /// <summary>
-    /// Adaptive orient2d for <see cref="float"/>. All fast-path arithmetic in float.
-    /// Falls back to exact double computation.
+    /// Adaptive orient2d predicate for <see cref="float"/> coordinates.
+    /// Determines whether point <c>c</c> is to the left of, on, or to the right of
+    /// the directed line from <c>a</c> to <c>b</c>.
+    /// Returns the determinant of {{ax-cx, ay-cy}, {bx-cx, by-cy}}.
+    /// Positive = c is left/above the line a→b; zero = collinear; negative = right/below.
     /// </summary>
+    /// <param name="ax">X-coordinate of point a.</param>
+    /// <param name="ay">Y-coordinate of point a.</param>
+    /// <param name="bx">X-coordinate of point b.</param>
+    /// <param name="by">Y-coordinate of point b.</param>
+    /// <param name="cx">X-coordinate of point c.</param>
+    /// <param name="cy">Y-coordinate of point c.</param>
+    /// <returns>
+    /// A positive value if c is to the left of line a→b,
+    /// zero if collinear, or a negative value if to the right.
+    /// </returns>
+    /// <remarks>
+    /// All fast-path arithmetic is performed in single precision.
+    /// Falls back to exact double computation when needed.
+    /// </remarks>
+    /// <seealso cref="PredicatesExact.Orient2d(float, float, float, float, float, float)"/>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static float Orient2D(
+    public static float Orient2d(
         float ax, float ay, float bx, float by, float cx, float cy)
     {
         float acx = ax - cx, bcx = bx - cx;
@@ -139,7 +173,25 @@ internal static class Predicates
     // InCircle
     // =========================================================================
 
-    /// <summary>Adaptive incircle for <see cref="double"/>.</summary>
+    /// <summary>
+    /// Adaptive incircle predicate for <see cref="double"/> coordinates.
+    /// Determines whether point <c>d</c> is inside, on, or outside the circumcircle
+    /// of the triangle defined by <c>a</c>, <c>b</c>, <c>c</c> (in CCW order).
+    /// Returns positive if <c>d</c> is inside, zero if on, negative if outside.
+    /// </summary>
+    /// <param name="ax">X-coordinate of triangle vertex a.</param>
+    /// <param name="ay">Y-coordinate of triangle vertex a.</param>
+    /// <param name="bx">X-coordinate of triangle vertex b.</param>
+    /// <param name="by">Y-coordinate of triangle vertex b.</param>
+    /// <param name="cx">X-coordinate of triangle vertex c.</param>
+    /// <param name="cy">Y-coordinate of triangle vertex c.</param>
+    /// <param name="dx">X-coordinate of query point d.</param>
+    /// <param name="dy">Y-coordinate of query point d.</param>
+    /// <returns>
+    /// A positive value if d is inside the circumcircle,
+    /// zero if on, or a negative value if outside.
+    /// </returns>
+    /// <seealso cref="PredicatesExact.InCircle(double, double, double, double, double, double, double, double)"/>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static double InCircle(
         double ax, double ay, double bx, double by,
@@ -224,88 +276,28 @@ internal static class Predicates
         }
 
         // Stage D: exact
-        return InCircleExact(ax, ay, bx, by, cx, cy, dx, dy);
+        return PredicatesExact.InCircle(ax, ay, bx, by, cx, cy, dx, dy);
     }
 
-    private static double InCircleExact(
-        double ax, double ay, double bx, double by,
-        double cx, double cy, double dx, double dy)
-    {
-        Span<double> abE = stackalloc double[4];
-        Span<double> bcE = stackalloc double[4];
-        Span<double> cdE = stackalloc double[4];
-        Span<double> daE = stackalloc double[4];
-        Span<double> acE = stackalloc double[4];
-        Span<double> bdE = stackalloc double[4];
-        int abLen = TwoTwoDiff(ax, by, bx, ay, abE);
-        int bcLen = TwoTwoDiff(bx, cy, cx, by, bcE);
-        int cdLen = TwoTwoDiff(cx, dy, dx, cy, cdE);
-        int daLen = TwoTwoDiff(dx, ay, ax, dy, daE);
-        int acLen = TwoTwoDiff(ax, cy, cx, ay, acE);
-        int bdLen = TwoTwoDiff(bx, dy, dx, by, bdE);
-
-        // abc = ab + bc - ac
-        Span<double> negAc = stackalloc double[4];
-        NegateInto(acE, acLen, negAc);
-        Span<double> abbc = stackalloc double[8];
-        int abbcLen = ExpansionSum(abE, abLen, bcE, bcLen, abbc);
-        Span<double> abc = stackalloc double[12];
-        int abcLen = ExpansionSum(abbc, abbcLen, negAc, acLen, abc);
-
-        // bcd = bc + cd - bd
-        Span<double> negBd = stackalloc double[4];
-        NegateInto(bdE, bdLen, negBd);
-        Span<double> bccd = stackalloc double[8];
-        int bccdLen = ExpansionSum(bcE, bcLen, cdE, cdLen, bccd);
-        Span<double> bcd = stackalloc double[12];
-        int bcdLen = ExpansionSum(bccd, bccdLen, negBd, bdLen, bcd);
-
-        // cda = cd + da + ac
-        Span<double> cdda = stackalloc double[8];
-        int cddaLen = ExpansionSum(cdE, cdLen, daE, daLen, cdda);
-        Span<double> cda = stackalloc double[12];
-        int cdaLen = ExpansionSum(cdda, cddaLen, acE, acLen, cda);
-
-        // dab = da + ab + bd
-        Span<double> daab = stackalloc double[8];
-        int daabLen = ExpansionSum(daE, daLen, abE, abLen, daab);
-        Span<double> dab = stackalloc double[12];
-        int dabLen = ExpansionSum(daab, daabLen, bdE, bdLen, dab);
-
-        // adet = bcd*ax*ax + bcd*ay*ay
-        Span<double> adet = stackalloc double[96];
-        int adetLen = ScaleExpansionSum(bcd, bcdLen, ax, ay, adet);
-
-        // bdet = -(cda*bx*bx + cda*by*by)
-        Span<double> bdetPos = stackalloc double[96];
-        int bdetPosLen = ScaleExpansionSum(cda, cdaLen, bx, by, bdetPos);
-        Span<double> bdet = stackalloc double[96];
-        NegateInto(bdetPos, bdetPosLen, bdet);
-        int bdetLen = bdetPosLen;
-
-        // cdet = dab*cx*cx + dab*cy*cy
-        Span<double> cdet = stackalloc double[96];
-        int cdetLen = ScaleExpansionSum(dab, dabLen, cx, cy, cdet);
-
-        // ddet = -(abc*dx*dx + abc*dy*dy)
-        Span<double> ddetPos = stackalloc double[96];
-        int ddetPosLen = ScaleExpansionSum(abc, abcLen, dx, dy, ddetPos);
-        Span<double> ddet = stackalloc double[96];
-        NegateInto(ddetPos, ddetPosLen, ddet);
-        int ddetLen = ddetPosLen;
-
-        // deter = (adet + bdet) + (cdet + ddet)
-        Span<double> ab2 = stackalloc double[192];
-        int ab2Len = ExpansionSum(adet, adetLen, bdet, bdetLen, ab2);
-        Span<double> cd2 = stackalloc double[192];
-        int cd2Len = ExpansionSum(cdet, cdetLen, ddet, ddetLen, cd2);
-        Span<double> deter = stackalloc double[384];
-        int deterLen = ExpansionSum(ab2, ab2Len, cd2, cd2Len, deter);
-
-        return MostSignificant(deter, deterLen);
-    }
-
-    /// <summary>InCircle for <see cref="float"/>. Fast path in float; exact decimal fallback.</summary>
+    /// <summary>
+    /// Adaptive incircle predicate for <see cref="float"/> coordinates.
+    /// Determines whether point <c>d</c> is inside, on, or outside the circumcircle
+    /// of the triangle defined by <c>a</c>, <c>b</c>, <c>c</c> (in CCW order).
+    /// Returns positive if <c>d</c> is inside, zero if on, negative if outside.
+    /// </summary>
+    /// <param name="ax">X-coordinate of triangle vertex a.</param>
+    /// <param name="ay">Y-coordinate of triangle vertex a.</param>
+    /// <param name="bx">X-coordinate of triangle vertex b.</param>
+    /// <param name="by">Y-coordinate of triangle vertex b.</param>
+    /// <param name="cx">X-coordinate of triangle vertex c.</param>
+    /// <param name="cy">Y-coordinate of triangle vertex c.</param>
+    /// <param name="dx">X-coordinate of query point d.</param>
+    /// <param name="dy">Y-coordinate of query point d.</param>
+    /// <returns>
+    /// A positive value if d is inside the circumcircle,
+    /// zero if on, or a negative value if outside.
+    /// </returns>
+    /// <seealso cref="PredicatesExact.InCircle(float, float, float, float, float, float, float, float)"/>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static float InCircle(
         float ax, float ay, float bx, float by,
@@ -335,39 +327,28 @@ internal static class Predicates
             return det;
         }
 
-        return InCircleExactF(adx, ady, bdx, bdy, cdx, cdy);
-    }
-
-    private static float InCircleExactF(
-        float adx, float ady, float bdx, float bdy, float cdx, float cdy)
-    {
-        decimal madx = (decimal)adx, mbdx = (decimal)bdx, mcdx = (decimal)cdx;
-        decimal mady = (decimal)ady, mbdy = (decimal)bdy, mcdy = (decimal)cdy;
-        decimal mdet = (madx * madx + mady * mady) * (mbdx * mcdy - mcdx * mbdy)
-                     + (mbdx * mbdx + mbdy * mbdy) * (mcdx * mady - madx * mcdy)
-                     + (mcdx * mcdx + mcdy * mcdy) * (madx * mbdy - mbdx * mady);
-        return mdet > 0m ? float.Epsilon : mdet < 0m ? -float.Epsilon : 0f;
+        return PredicatesExact.InCircle(ax, ay, bx, by, cx, cy, dx, dy);
     }
 
     // =========================================================================
-    // Shewchuk/Lenthe floating-point expansion primitives
+    // Shewchuk/Lenthe floating-point expansion primitives (internal)
     // =========================================================================
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static double PlusTail(double a, double b, double x)
+    internal static double PlusTail(double a, double b, double x)
     {
         double bv = x - a;
         return (a - (x - bv)) + (b - bv);
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static double FastPlusTail(double a, double b, double x)
+    internal static double FastPlusTail(double a, double b, double x)
     {
         return b - (x - a);
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static double MinusTail(double a, double b, double x)
+    internal static double MinusTail(double a, double b, double x)
     {
         double bv = a - x;
         double av = x + bv;
@@ -375,7 +356,7 @@ internal static class Predicates
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static (double aHi, double aLo) Split(double a)
+    internal static (double aHi, double aLo) Split(double a)
     {
         double c = SplitterD * a;
         double aBig = c - a;
@@ -384,7 +365,7 @@ internal static class Predicates
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static double MultTail(double a, double b, double p)
+    internal static double MultTail(double a, double b, double p)
     {
         var (aHi, aLo) = Split(a);
         var (bHi, bLo) = Split(b);
@@ -398,7 +379,7 @@ internal static class Predicates
     /// Exact expansion of <c>ax*by - ay*bx</c> (up to 4 non-zero terms).
     /// Matches Lenthe <c>ExpansionBase::TwoTwoDiff</c>.
     /// </summary>
-    private static int TwoTwoDiff(double ax, double by, double ay, double bx, Span<double> h)
+    internal static int TwoTwoDiff(double ax, double by, double ay, double bx, Span<double> h)
     {
         double axby1 = ax * by;
         double axby0 = MultTail(ax, by, axby1);
@@ -427,7 +408,7 @@ internal static class Predicates
     /// Matches Lenthe <c>ExpansionBase::ScaleExpansion</c>.
     /// Output has up to <c>2*elen</c> terms.
     /// </summary>
-    private static int ScaleExpansion(Span<double> e, int elen, double b, Span<double> h)
+    internal static int ScaleExpansion(Span<double> e, int elen, double b, Span<double> h)
     {
         if (elen == 0 || b == 0.0)
         {
@@ -457,7 +438,7 @@ internal static class Predicates
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static double DekkersPresplit(double a, double bHi, double bLo, double p)
+    internal static double DekkersPresplit(double a, double bHi, double bLo, double p)
     {
         var (aHi, aLo) = Split(a);
         double y = p - aHi * bHi;
@@ -470,7 +451,7 @@ internal static class Predicates
     /// Computes <c>e*s*s + e*t*t</c> as an expansion (two ScaleExpansion calls each, then sum).
     /// Max output: 32 terms for 4-term input (used for InCircle Stage B lift terms).
     /// </summary>
-    private static int ScaleExpansionSum(Span<double> e, int elen, double s, double t, Span<double> h)
+    internal static int ScaleExpansionSum(Span<double> e, int elen, double s, double t, Span<double> h)
     {
         Span<double> es = stackalloc double[8];
         int esLen = ScaleExpansion(e, elen, s, es);
@@ -489,7 +470,7 @@ internal static class Predicates
     /// Merge-then-accumulate two expansions. Matches Lenthe <c>ExpansionBase::ExpansionSum</c>:
     /// std::merge by |value| (stable), then sequential grow-expansion accumulation.
     /// </summary>
-    private static int ExpansionSum(Span<double> e, int elen, Span<double> f, int flen, Span<double> h)
+    internal static int ExpansionSum(Span<double> e, int elen, Span<double> f, int flen, Span<double> h)
     {
         if (elen == 0 && flen == 0) { return 0; }
         if (elen == 0) { f[..flen].CopyTo(h); return flen; }
@@ -538,7 +519,7 @@ internal static class Predicates
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static double Estimate(Span<double> e, int elen)
+    internal static double Estimate(Span<double> e, int elen)
     {
         double sum = 0.0;
         for (int i = 0; i < elen; i++) { sum += e[i]; }
@@ -546,7 +527,7 @@ internal static class Predicates
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static double MostSignificant(Span<double> e, int elen)
+    internal static double MostSignificant(Span<double> e, int elen)
     {
         for (int i = elen - 1; i >= 0; i--)
         {
@@ -555,7 +536,7 @@ internal static class Predicates
         return 0.0;
     }
 
-    private static void NegateInto(Span<double> src, int len, Span<double> dst)
+    internal static void NegateInto(Span<double> src, int len, Span<double> dst)
     {
         for (int i = 0; i < len; i++) { dst[i] = -src[i]; }
     }

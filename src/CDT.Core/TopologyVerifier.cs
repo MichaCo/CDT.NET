@@ -46,7 +46,7 @@ public static class TopologyVerifier
                     return false;
                 // Verify shared edge: neighbor[i] shares vertices {v[i], v[ccw(i)]}
                 int va = t.GetVertex(i);
-                int vb = t.GetVertex(TriangleUtils.Ccw(i));
+                int vb = t.GetVertex(CdtUtils.Ccw(i));
                 if (!tN.ContainsVertex(va) || !tN.ContainsVertex(vb))
                     return false;
             }
@@ -54,3 +54,4 @@ public static class TopologyVerifier
         return true;
     }
 }
+

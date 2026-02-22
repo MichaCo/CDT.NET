@@ -4,7 +4,7 @@
 
 using System.Numerics;
 using System.Runtime.CompilerServices;
-using static CDT.TriangleUtils;
+using static CDT.CdtUtils;
 
 namespace CDT;
 
@@ -252,7 +252,7 @@ public sealed class Triangulation<T>
         var toErase = new HashSet<int>();
         for (int i = 0; i < _triangles.Count; i++)
         {
-            if (TriangleUtils.TouchesSuperTriangle(_triangles[i]))
+            if (CdtUtils.TouchesSuperTriangle(_triangles[i]))
                 toErase.Add(i);
         }
         FinalizeTriangulation(toErase);
@@ -535,8 +535,8 @@ public sealed class Triangulation<T>
             throw new DuplicateVertexException(iVert - _nTargetVerts, iDupe - _nTargetVerts);
         }
 
-        int iNeigh = TriangleUtils.IsOnEdge(loc)
-            ? t.GetNeighbor(TriangleUtils.EdgeNeighborFromLocation(loc))
+        int iNeigh = CdtUtils.IsOnEdge(loc)
+            ? t.GetNeighbor(CdtUtils.EdgeNeighborFromLocation(loc))
             : Indices.NoNeighbor;
         return (iT, iNeigh);
     }
@@ -568,7 +568,7 @@ public sealed class Triangulation<T>
             {
                 int idx = (i + offset) % 3;
                 int vStart = t.GetVertex(idx);
-                int vEnd = t.GetVertex(TriangleUtils.Ccw(idx));
+                int vEnd = t.GetVertex(CdtUtils.Ccw(idx));
                 var loc = LocatePointLine(pos, _vertices[vStart], _vertices[vEnd]);
                 int iN = t.GetNeighbor(idx);
                 if (loc == PtLineLocation.Right && iN != Indices.NoNeighbor)
@@ -619,18 +619,18 @@ public sealed class Triangulation<T>
         int iTnew2 = AddTriangle();
 
         var t1 = _triangles[iT1];
-        int i1 = TriangleUtils.NeighborIndex(t1, iT2);
-        int v1 = t1.GetVertex(TriangleUtils.OpposedVertexIndex(i1));
-        int v2 = t1.GetVertex(TriangleUtils.Ccw(TriangleUtils.OpposedVertexIndex(i1)));
-        int n1 = t1.GetNeighbor(TriangleUtils.OpposedVertexIndex(i1));
-        int n4 = t1.GetNeighbor(TriangleUtils.Cw(TriangleUtils.OpposedVertexIndex(i1)));
+        int i1 = CdtUtils.NeighborIndex(t1, iT2);
+        int v1 = t1.GetVertex(CdtUtils.OpposedVertexIndex(i1));
+        int v2 = t1.GetVertex(CdtUtils.Ccw(CdtUtils.OpposedVertexIndex(i1)));
+        int n1 = t1.GetNeighbor(CdtUtils.OpposedVertexIndex(i1));
+        int n4 = t1.GetNeighbor(CdtUtils.Cw(CdtUtils.OpposedVertexIndex(i1)));
 
         var t2 = _triangles[iT2];
-        int i2 = TriangleUtils.NeighborIndex(t2, iT1);
-        int v3 = t2.GetVertex(TriangleUtils.OpposedVertexIndex(i2));
-        int v4 = t2.GetVertex(TriangleUtils.Ccw(TriangleUtils.OpposedVertexIndex(i2)));
-        int n3 = t2.GetNeighbor(TriangleUtils.OpposedVertexIndex(i2));
-        int n2 = t2.GetNeighbor(TriangleUtils.Cw(TriangleUtils.OpposedVertexIndex(i2)));
+        int i2 = CdtUtils.NeighborIndex(t2, iT1);
+        int v3 = t2.GetVertex(CdtUtils.OpposedVertexIndex(i2));
+        int v4 = t2.GetVertex(CdtUtils.Ccw(CdtUtils.OpposedVertexIndex(i2)));
+        int n3 = t2.GetNeighbor(CdtUtils.OpposedVertexIndex(i2));
+        int n2 = t2.GetNeighbor(CdtUtils.Cw(CdtUtils.OpposedVertexIndex(i2)));
 
         _triangles[iT1] = new Triangle(v, v1, v2, iTnew1, n1, iT2);
         _triangles[iT2] = new Triangle(v, v2, v3, iT1, n2, iTnew2);
@@ -693,12 +693,12 @@ public sealed class Triangulation<T>
         if (iTopo == Indices.NoNeighbor) return;
 
         var tOpo = _triangles[iTopo];
-        int oi = TriangleUtils.NeighborIndex(tOpo, iT);
-        int ov = TriangleUtils.OpposedVertexIndex(oi);
+        int oi = CdtUtils.NeighborIndex(tOpo, iT);
+        int ov = CdtUtils.OpposedVertexIndex(oi);
         iV3 = tOpo.GetVertex(ov);
         // n2 and n4 use the NEIGHBOR position (oi), not the vertex position (ov)
-        n2 = tOpo.GetNeighbor(TriangleUtils.Ccw(oi));
-        n4 = tOpo.GetNeighbor(TriangleUtils.Cw(oi));
+        n2 = tOpo.GetNeighbor(CdtUtils.Ccw(oi));
+        n4 = tOpo.GetNeighbor(CdtUtils.Cw(oi));
     }
 
     private bool IsFlipNeeded(int iV1, int iV2, int iV3, int iV4)
@@ -775,7 +775,7 @@ public sealed class Triangulation<T>
         var b = _vertices[iB];
         T distTol = _minDistToConstraintEdge == T.Zero
             ? T.Zero
-            : _minDistToConstraintEdge * TriangleUtils.Distance(a, b);
+            : _minDistToConstraintEdge * CdtUtils.Distance(a, b);
 
         var (iT, iVL, iVR) = IntersectedTriangle(iA, a, b, distTol);
         if (iT == Indices.NoNeighbor)
@@ -790,8 +790,8 @@ public sealed class Triangulation<T>
         var polyR = new List<int>(8) { iA, iVR };
         var outerTris = new Dictionary<Edge, int>
         {
-            [new Edge(iA, iVL)] = TriangleUtils.EdgeNeighbor(_triangles[iT], iA, iVL),
-            [new Edge(iA, iVR)] = TriangleUtils.EdgeNeighbor(_triangles[iT], iA, iVR),
+            [new Edge(iA, iVL)] = CdtUtils.EdgeNeighbor(_triangles[iT], iA, iVL),
+            [new Edge(iA, iVR)] = CdtUtils.EdgeNeighbor(_triangles[iT], iA, iVR),
         };
         var intersected = new List<int>(8) { iT };
 
@@ -800,9 +800,9 @@ public sealed class Triangulation<T>
 
         while (!t.ContainsVertex(iB))
         {
-            int iTopo = TriangleUtils.OpposedTriangle(t, iV);
+            int iTopo = CdtUtils.OpposedTriangle(t, iV);
             var tOpo = _triangles[iTopo];
-            int iVopo = TriangleUtils.OpposedVertex(tOpo, iT);
+            int iVopo = CdtUtils.OpposedVertex(tOpo, iT);
 
             HandleIntersectingEdgeStrategy(iVL, iVR, iA, iB, iT, iTopo, originalEdge, a, b, distTol, remaining, tppIterations, out bool @return);
             if (@return) return;
@@ -811,7 +811,7 @@ public sealed class Triangulation<T>
             if (loc == PtLineLocation.Left)
             {
                 var e = new Edge(polyL[^1], iVopo);
-                int outer = TriangleUtils.EdgeNeighbor(tOpo, e.V1, e.V2);
+                int outer = CdtUtils.EdgeNeighbor(tOpo, e.V1, e.V2);
                 if (!outerTris.TryAdd(e, outer)) outerTris[e] = Indices.NoNeighbor;
                 polyL.Add(iVopo);
                 iV = iVL;
@@ -820,7 +820,7 @@ public sealed class Triangulation<T>
             else if (loc == PtLineLocation.Right)
             {
                 var e = new Edge(polyR[^1], iVopo);
-                int outer = TriangleUtils.EdgeNeighbor(tOpo, e.V1, e.V2);
+                int outer = CdtUtils.EdgeNeighbor(tOpo, e.V1, e.V2);
                 if (!outerTris.TryAdd(e, outer)) outerTris[e] = Indices.NoNeighbor;
                 polyR.Add(iVopo);
                 iV = iVR;
@@ -836,8 +836,8 @@ public sealed class Triangulation<T>
             t = _triangles[iT];
         }
 
-        outerTris[new Edge(polyL[^1], iB)] = TriangleUtils.EdgeNeighbor(t, polyL[^1], iB);
-        outerTris[new Edge(polyR[^1], iB)] = TriangleUtils.EdgeNeighbor(t, polyR[^1], iB);
+        outerTris[new Edge(polyL[^1], iB)] = CdtUtils.EdgeNeighbor(t, polyL[^1], iB);
+        outerTris[new Edge(polyR[^1], iB)] = CdtUtils.EdgeNeighbor(t, polyR[^1], iB);
         polyL.Add(iB);
         polyR.Add(iB);
 
@@ -924,7 +924,7 @@ public sealed class Triangulation<T>
         var b = _vertices[iB];
         T distTol = _minDistToConstraintEdge == T.Zero
             ? T.Zero
-            : _minDistToConstraintEdge * TriangleUtils.Distance(a, b);
+            : _minDistToConstraintEdge * CdtUtils.Distance(a, b);
 
         var (iT, iVleft, iVright) = IntersectedTriangle(iA, a, b, distTol);
         if (iT == Indices.NoNeighbor)
@@ -941,9 +941,9 @@ public sealed class Triangulation<T>
         var t = _triangles[iT];
         while (!t.ContainsVertex(iB))
         {
-            int iTopo = TriangleUtils.OpposedTriangle(t, iV);
+            int iTopo = CdtUtils.OpposedTriangle(t, iV);
             var tOpo = _triangles[iTopo];
-            int iVopo = TriangleUtils.OpposedVertex(tOpo, iT);
+            int iVopo = CdtUtils.OpposedVertex(tOpo, iT);
             var vOpo = _vertices[iVopo];
 
             HandleConformIntersecting(iVleft, iVright, iA, iB, iT, iTopo,
@@ -1124,17 +1124,17 @@ public sealed class Triangulation<T>
         do
         {
             var t = _triangles[iT];
-            int i = TriangleUtils.VertexIndex(t, iA);
-            int iP2 = t.GetVertex(TriangleUtils.Ccw(i));
+            int i = CdtUtils.VertexIndex(t, iA);
+            int iP2 = t.GetVertex(CdtUtils.Ccw(i));
             var p2 = _vertices[iP2];
             T orientP2 = Orient2D(p2, a, b);
-            var locP2 = TriangleUtils.ClassifyOrientation(orientP2, tolerance);
+            var locP2 = CdtUtils.ClassifyOrientation(orientP2, tolerance);
             if (locP2 == PtLineLocation.Right)
             {
-                int iP1 = t.GetVertex(TriangleUtils.Cw(i));
+                int iP1 = t.GetVertex(CdtUtils.Cw(i));
                 var p1 = _vertices[iP1];
                 T orientP1 = Orient2D(p1, a, b);
-                var locP1 = TriangleUtils.ClassifyOrientation(orientP1, T.Zero);
+                var locP1 = CdtUtils.ClassifyOrientation(orientP1, T.Zero);
                 if (locP1 == PtLineLocation.OnLine)
                     return (Indices.NoNeighbor, iP1, iP1);
                 if (locP1 == PtLineLocation.Left)
@@ -1145,7 +1145,7 @@ public sealed class Triangulation<T>
                         T closestOrient; int iClosest;
                         if (absp1 <= absp2) { closestOrient = orientP1; iClosest = iP1; }
                         else { closestOrient = orientP2; iClosest = iP2; }
-                        if (TriangleUtils.ClassifyOrientation(closestOrient, tolerance) == PtLineLocation.OnLine)
+                        if (CdtUtils.ClassifyOrientation(closestOrient, tolerance) == PtLineLocation.OnLine)
                             return (Indices.NoNeighbor, iClosest, iClosest);
                     }
                     return (iT, iP1, iP2);
@@ -1183,7 +1183,7 @@ public sealed class Triangulation<T>
     {
         if (iT == Indices.NoNeighbor) return;
         var t = _triangles[iT];
-        t.SetNeighbor(TriangleUtils.EdgeNeighborIndex(t, va, vb), newN);
+        t.SetNeighbor(CdtUtils.EdgeNeighborIndex(t, va, vb), newN);
         _triangles[iT] = t;
     }
 
@@ -1279,11 +1279,11 @@ public sealed class Triangulation<T>
             var t = _triangles[iT];
             for (int i = 0; i < 3; i++)
             {
-                int va = t.GetVertex(TriangleUtils.Ccw(i));
-                int vb = t.GetVertex(TriangleUtils.Cw(i));
+                int va = t.GetVertex(CdtUtils.Ccw(i));
+                int vb = t.GetVertex(CdtUtils.Cw(i));
                 var opEdge = new Edge(va, vb);
                 if (_fixedEdges.Contains(opEdge)) continue;
-                int iN = t.GetNeighbor(TriangleUtils.OpposedNeighborIndex(i));
+                int iN = t.GetNeighbor(CdtUtils.OpposedNeighborIndex(i));
                 if (iN != Indices.NoNeighbor && !traversed.Contains(iN))
                     seeds.Push(iN);
             }
@@ -1418,10 +1418,10 @@ public sealed class Triangulation<T>
             var t = _triangles[iT];
             for (int i = 0; i < 3; i++)
             {
-                int va = t.GetVertex(TriangleUtils.Ccw(i));
-                int vb = t.GetVertex(TriangleUtils.Cw(i));
+                int va = t.GetVertex(CdtUtils.Ccw(i));
+                int vb = t.GetVertex(CdtUtils.Cw(i));
                 var opEdge = new Edge(va, vb);
-                int iN = t.GetNeighbor(TriangleUtils.OpposedNeighborIndex(i));
+                int iN = t.GetNeighbor(CdtUtils.OpposedNeighborIndex(i));
                 if (iN == Indices.NoNeighbor || triDepths[iN] <= layerDepth) continue;
 
                 if (_fixedEdges.Contains(opEdge))
