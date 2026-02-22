@@ -365,8 +365,9 @@ public sealed class Triangulation<T>
     private void InsertVertex(int iVert)
     {
         // Walk-start from KD-tree nearest point, or vertex 0 as fallback
+        var v = CollectionsMarshal.AsSpan(_vertices)[iVert];
         int near = _kdTree != null
-            ? _kdTree.Nearest(_vertices[iVert].X, _vertices[iVert].Y, _vertices)
+            ? _kdTree.Nearest(v.X, v.Y, _vertices)
             : 0;
         InsertVertex(iVert, near);
     }
@@ -413,10 +414,13 @@ public sealed class Triangulation<T>
 
                 int midPos = lo + len / 2;
 
+                // Note: Span<T> cannot be captured by a lambda (ref-struct limitation),
+                // so NthElement comparators must capture the List<T> via 'this'.
+                // For the explicit split-value reads we use the span directly.
                 if (T.CreateChecked(boxMaxX - boxMinX) >= T.CreateChecked(boxMaxY - boxMinY))
                 {
                     NthElement(indices, lo, midPos, hi, (a, b) => _vertices[a].X.CompareTo(_vertices[b].X));
-                    T split = _vertices[indices[midPos]].X;
+                    T split = CollectionsMarshal.AsSpan(_vertices)[indices[midPos]].X;
                     InsertVertex(indices[midPos], parent);
                     if (lo < midPos) { queue.Enqueue((lo, midPos, boxMinX, boxMinY, split, boxMaxY, indices[midPos])); }
                     if (midPos + 1 < hi) { queue.Enqueue((midPos + 1, hi, split, boxMinY, boxMaxX, boxMaxY, indices[midPos])); }
@@ -424,7 +428,7 @@ public sealed class Triangulation<T>
                 else
                 {
                     NthElement(indices, lo, midPos, hi, (a, b) => _vertices[a].Y.CompareTo(_vertices[b].Y));
-                    T split = _vertices[indices[midPos]].Y;
+                    T split = CollectionsMarshal.AsSpan(_vertices)[indices[midPos]].Y;
                     InsertVertex(indices[midPos], parent);
                     if (lo < midPos) { queue.Enqueue((lo, midPos, boxMinX, boxMinY, boxMaxX, split, indices[midPos])); }
                     if (midPos + 1 < hi) { queue.Enqueue((midPos + 1, hi, boxMinX, split, boxMaxX, boxMaxY, indices[midPos])); }
@@ -473,8 +477,9 @@ public sealed class Triangulation<T>
     {
         var flipped = new List<Edge>();
         // Use KD-tree if available, otherwise fall back to vertex 0 (first super-triangle vertex)
+        var vPos = CollectionsMarshal.AsSpan(_vertices)[iV];
         int near = _kdTree != null
-            ? _kdTree.Nearest(_vertices[iV].X, _vertices[iV].Y, _vertices)
+            ? _kdTree.Nearest(vPos.X, vPos.Y, _vertices)
             : 0;
         var (iT, iTopo) = WalkingSearchTrianglesAt(iV, near);
         var stack = iTopo == Indices.NoNeighbor
@@ -611,14 +616,15 @@ public sealed class Triangulation<T>
     {
         int iNewT1 = AddTriangle();
         int iNewT2 = AddTriangle();
-
-        var t = _triangles[iT];
+        // Get span AFTER all additions – no further reallocation can occur now.
+        var triSpan = CollectionsMarshal.AsSpan(_triangles);
+        ref readonly var t = ref triSpan[iT];
         int v1 = t.V0, v2 = t.V1, v3 = t.V2;
         int n1 = t.N0, n2 = t.N1, n3 = t.N2;
 
-        _triangles[iNewT1] = new Triangle(v2, v3, v, n2, iNewT2, iT);
-        _triangles[iNewT2] = new Triangle(v3, v1, v, n3, iT, iNewT1);
-        _triangles[iT] = new Triangle(v1, v2, v, n1, iNewT1, iNewT2);
+        triSpan[iNewT1] = new Triangle(v2, v3, v, n2, iNewT2, iT);
+        triSpan[iNewT2] = new Triangle(v3, v1, v, n3, iT, iNewT1);
+        triSpan[iT] = new Triangle(v1, v2, v, n1, iNewT1, iNewT2);
 
         SetAdjacentTriangle(v, iT);
         SetAdjacentTriangle(v3, iNewT1);
@@ -636,25 +642,26 @@ public sealed class Triangulation<T>
     {
         int iTnew1 = AddTriangle();
         int iTnew2 = AddTriangle();
-
-        var t1 = _triangles[iT1];
+        // Get span AFTER all additions – no further reallocation can occur now.
+        var triSpan = CollectionsMarshal.AsSpan(_triangles);
+        ref readonly var t1 = ref triSpan[iT1];
         int i1 = CdtUtils.NeighborIndex(t1, iT2);
         int v1 = t1.GetVertex(CdtUtils.OpposedVertexIndex(i1));
         int v2 = t1.GetVertex(CdtUtils.Ccw(CdtUtils.OpposedVertexIndex(i1)));
         int n1 = t1.GetNeighbor(CdtUtils.OpposedVertexIndex(i1));
         int n4 = t1.GetNeighbor(CdtUtils.Cw(CdtUtils.OpposedVertexIndex(i1)));
 
-        var t2 = _triangles[iT2];
+        ref readonly var t2 = ref triSpan[iT2];
         int i2 = CdtUtils.NeighborIndex(t2, iT1);
         int v3 = t2.GetVertex(CdtUtils.OpposedVertexIndex(i2));
         int v4 = t2.GetVertex(CdtUtils.Ccw(CdtUtils.OpposedVertexIndex(i2)));
         int n3 = t2.GetNeighbor(CdtUtils.OpposedVertexIndex(i2));
         int n2 = t2.GetNeighbor(CdtUtils.Cw(CdtUtils.OpposedVertexIndex(i2)));
 
-        _triangles[iT1] = new Triangle(v, v1, v2, iTnew1, n1, iT2);
-        _triangles[iT2] = new Triangle(v, v2, v3, iT1, n2, iTnew2);
-        _triangles[iTnew1] = new Triangle(v, v4, v1, iTnew2, n4, iT1);
-        _triangles[iTnew2] = new Triangle(v, v3, v4, iT2, n3, iTnew1);
+        triSpan[iT1] = new Triangle(v, v1, v2, iTnew1, n1, iT2);
+        triSpan[iT2] = new Triangle(v, v2, v3, iT1, n2, iTnew2);
+        triSpan[iTnew1] = new Triangle(v, v4, v1, iTnew2, n4, iT1);
+        triSpan[iTnew2] = new Triangle(v, v3, v4, iT2, n3, iTnew1);
 
         SetAdjacentTriangle(v, iT1);
         SetAdjacentTriangle(v4, iTnew1);
@@ -793,8 +800,10 @@ public sealed class Triangulation<T>
             return;
         }
 
-        var a = _vertices[iA];
-        var b = _vertices[iB];
+        var vertSpan = CollectionsMarshal.AsSpan(_vertices);
+        var triSpan  = CollectionsMarshal.AsSpan(_triangles);
+        var a = vertSpan[iA];
+        var b = vertSpan[iB];
         T distTol = _minDistToConstraintEdge == T.Zero
             ? T.Zero
             : _minDistToConstraintEdge * CdtUtils.Distance(a, b);
@@ -812,23 +821,23 @@ public sealed class Triangulation<T>
         var polyR = new List<int>(8) { iA, iVR };
         var outerTris = new Dictionary<Edge, int>
         {
-            [new Edge(iA, iVL)] = CdtUtils.EdgeNeighbor(_triangles[iT], iA, iVL),
-            [new Edge(iA, iVR)] = CdtUtils.EdgeNeighbor(_triangles[iT], iA, iVR),
+            [new Edge(iA, iVL)] = CdtUtils.EdgeNeighbor(triSpan[iT], iA, iVL),
+            [new Edge(iA, iVR)] = CdtUtils.EdgeNeighbor(triSpan[iT], iA, iVR),
         };
         var intersected = new List<int>(8) { iT };
         int iV = iA;
-        var t = _triangles[iT];
+        var t = triSpan[iT];
 
         while (!t.ContainsVertex(iB))
         {
             int iTopo = CdtUtils.OpposedTriangle(t, iV);
-            var tOpo = _triangles[iTopo];
+            var tOpo = triSpan[iTopo];
             int iVopo = CdtUtils.OpposedVertex(tOpo, iT);
 
             HandleIntersectingEdgeStrategy(iVL, iVR, iA, iB, iT, iTopo, originalEdge, a, b, distTol, remaining, tppIterations, out bool @return);
             if (@return) return;
 
-            var loc = LocatePointLine(_vertices[iVopo], a, b, distTol);
+            var loc = LocatePointLine(vertSpan[iVopo], a, b, distTol);
             if (loc == PtLineLocation.Left)
             {
                 var e = new Edge(polyL[^1], iVopo);
@@ -854,7 +863,7 @@ public sealed class Triangulation<T>
 
             intersected.Add(iTopo);
             iT = iTopo;
-            t = _triangles[iT];
+            t = triSpan[iT];
         }
 
         outerTris[new Edge(polyL[^1], iB)] = CdtUtils.EdgeNeighbor(t, polyL[^1], iB);
@@ -911,7 +920,11 @@ public sealed class Triangulation<T>
             case IntersectingConstraintEdges.TryResolve:
                 if (_fixedEdges.Contains(edgeLR))
                 {
-                    var newV = IntersectionPosition(_vertices[iA], _vertices[iB], _vertices[iVL], _vertices[iVR]);
+                    var newV = IntersectionPosition(
+                        CollectionsMarshal.AsSpan(_vertices)[iA],
+                        CollectionsMarshal.AsSpan(_vertices)[iB],
+                        CollectionsMarshal.AsSpan(_vertices)[iVL],
+                        CollectionsMarshal.AsSpan(_vertices)[iVR]);
                     int iNewVert = SplitFixedEdgeAt(edgeLR, newV, iT, iTopo);
                     remaining.Add(new Edge(iA, iNewVert));
                     remaining.Add(new Edge(iNewVert, iB));
@@ -941,8 +954,10 @@ public sealed class Triangulation<T>
             return;
         }
 
-        var a = _vertices[iA];
-        var b = _vertices[iB];
+        var vertSpan = CollectionsMarshal.AsSpan(_vertices);
+        var triSpan  = CollectionsMarshal.AsSpan(_triangles);
+        var a = vertSpan[iA];
+        var b = vertSpan[iB];
         T distTol = _minDistToConstraintEdge == T.Zero
             ? T.Zero
             : _minDistToConstraintEdge * CdtUtils.Distance(a, b);
@@ -959,20 +974,20 @@ public sealed class Triangulation<T>
         }
 
         int iV = iA;
-        var t = _triangles[iT];
+        var t = triSpan[iT];
         while (!t.ContainsVertex(iB))
         {
             int iTopo = CdtUtils.OpposedTriangle(t, iV);
-            var tOpo = _triangles[iTopo];
+            var tOpo = triSpan[iTopo];
             int iVopo = CdtUtils.OpposedVertex(tOpo, iT);
-            var vOpo = _vertices[iVopo];
+            var vOpo = vertSpan[iVopo];
 
             HandleConformIntersecting(iVleft, iVright, iA, iB, iT, iTopo,
                 originals, overlaps, remaining, out bool @return);
             if (@return) return;
 
             iT = iTopo;
-            t = _triangles[iT];
+            t = triSpan[iT];
             var loc = LocatePointLine(vOpo, a, b, distTol);
             if (loc == PtLineLocation.Left) { iV = iVleft; iVleft = iVopo; }
             else if (loc == PtLineLocation.Right) { iV = iVright; iVright = iVopo; }
@@ -984,8 +999,8 @@ public sealed class Triangulation<T>
 
         // Insert midpoint and recurse
         int iMid = _vertices.Count;
-        var start = _vertices[iA];
-        var end = _vertices[iB];
+        var start = vertSpan[iA];
+        var end   = vertSpan[iB];
         T two = T.One + T.One;
         AddNewVertex(new V2d<T>((start.X + end.X) / two, (start.Y + end.Y) / two), Indices.NoNeighbor);
 
@@ -1027,7 +1042,11 @@ public sealed class Triangulation<T>
             case IntersectingConstraintEdges.TryResolve:
                 if (_fixedEdges.Contains(edgeLR))
                 {
-                    var newV = IntersectionPosition(_vertices[iA], _vertices[iB], _vertices[iVleft], _vertices[iVright]);
+                    var newV = IntersectionPosition(
+                        CollectionsMarshal.AsSpan(_vertices)[iA],
+                        CollectionsMarshal.AsSpan(_vertices)[iB],
+                        CollectionsMarshal.AsSpan(_vertices)[iVleft],
+                        CollectionsMarshal.AsSpan(_vertices)[iVright]);
                     int iNewVert = SplitFixedEdgeAt(edgeLR, newV, iT, iTopo);
                     remaining.Add(new ConformToEdgeTask(new Edge(iNewVert, iB), originals, overlaps));
                     remaining.Add(new ConformToEdgeTask(new Edge(iA, iNewVert), originals, overlaps));
@@ -1121,13 +1140,14 @@ public sealed class Triangulation<T>
 
     private int FindDelaunayPoint(List<int> poly, int iA, int iB)
     {
-        var a = _vertices[poly[iA]];
-        var b = _vertices[poly[iB]];
+        var vertSpan = CollectionsMarshal.AsSpan(_vertices);
+        var a = vertSpan[poly[iA]];
+        var b = vertSpan[poly[iB]];
         int best = iA + 1;
-        var bestV = _vertices[poly[best]];
+        var bestV = vertSpan[poly[best]];
         for (int i = iA + 1; i < iB; i++)
         {
-            var v = _vertices[poly[i]];
+            var v = vertSpan[poly[i]];
             if (IsInCircumcircle(v, a, b, bestV))
             {
                 best = i;
@@ -1146,18 +1166,20 @@ public sealed class Triangulation<T>
     {
         int startTri = _vertTris[iA];
         int iT = startTri;
+        var triSpan  = CollectionsMarshal.AsSpan(_triangles);
+        var vertSpan = CollectionsMarshal.AsSpan(_vertices);
         do
         {
-            var t = _triangles[iT];
+            ref readonly var t = ref triSpan[iT];
             int i = CdtUtils.VertexIndex(t, iA);
             int iP2 = t.GetVertex(CdtUtils.Ccw(i));
-            var p2 = _vertices[iP2];
+            var p2 = vertSpan[iP2];
             T orientP2 = Orient2D(p2, a, b);
             var locP2 = CdtUtils.ClassifyOrientation(orientP2, tolerance);
             if (locP2 == PtLineLocation.Right)
             {
                 int iP1 = t.GetVertex(CdtUtils.Cw(i));
-                var p1 = _vertices[iP1];
+                var p1 = vertSpan[iP1];
                 T orientP1 = Orient2D(p1, a, b);
                 var locP1 = CdtUtils.ClassifyOrientation(orientP1, T.Zero);
                 if (locP1 == PtLineLocation.OnLine)
@@ -1213,7 +1235,7 @@ public sealed class Triangulation<T>
     private void PivotVertexTriangleCW(int v)
     {
         int iT = _vertTris[v];
-        var (iNext, _) = _triangles[iT].Next(v);
+        var (iNext, _) = CollectionsMarshal.AsSpan(_triangles)[iT].Next(v);
         _vertTris[v] = iNext;
     }
 
@@ -1279,9 +1301,10 @@ public sealed class Triangulation<T>
     {
         int startTri = _vertTris[va];
         int iT = startTri;
+        var triSpan = CollectionsMarshal.AsSpan(_triangles);
         do
         {
-            var t = _triangles[iT];
+            ref readonly var t = ref triSpan[iT];
             if (t.ContainsVertex(vb)) return true;
             (iT, _) = t.Next(va);
         } while (iT != startTri && iT != Indices.NoNeighbor);
@@ -1295,11 +1318,12 @@ public sealed class Triangulation<T>
     private HashSet<int> GrowToBoundary(Stack<int> seeds)
     {
         var traversed = new HashSet<int>();
+        var triSpan = CollectionsMarshal.AsSpan(_triangles);
         while (seeds.Count > 0)
         {
             int iT = seeds.Pop();
             traversed.Add(iT);
-            var t = _triangles[iT];
+            ref readonly var t = ref triSpan[iT];
             for (int i = 0; i < 3; i++)
             {
                 int va = t.GetVertex(CdtUtils.Ccw(i));
