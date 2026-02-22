@@ -5,7 +5,6 @@
 using System.Globalization;
 using System.Numerics;
 using System.Text;
-using CDT;
 
 namespace CDT.Tests;
 
@@ -301,11 +300,13 @@ public abstract class ConstraintTriangulationGroundTruthTestsBase<T>
 
 /// <summary>Constraint ground-truth tests for <see cref="double"/>.</summary>
 public sealed class ConstraintTriangulationGroundTruthTests_Double
-    : ConstraintTriangulationGroundTruthTestsBase<double> { }
+    : ConstraintTriangulationGroundTruthTestsBase<double>
+{ }
 
 /// <summary>Constraint ground-truth tests for <see cref="float"/>.</summary>
 public sealed class ConstraintTriangulationGroundTruthTests_Float
-    : ConstraintTriangulationGroundTruthTestsBase<float> { }
+    : ConstraintTriangulationGroundTruthTestsBase<float>
+{ }
 
 // ---------------------------------------------------------------------------
 // Conforming triangulation ground-truth tests
@@ -339,7 +340,7 @@ public abstract class ConformingTriangulationGroundTruthTestsBase<T>
     public static IEnumerable<object[]> ConformingTestCases()
     {
         foreach (var f in RegularFiles) yield return [f, false];
-        foreach (var f in TypedFiles)   yield return [f, true];
+        foreach (var f in TypedFiles) yield return [f, true];
     }
 
     [Theory]
@@ -371,11 +372,13 @@ public abstract class ConformingTriangulationGroundTruthTestsBase<T>
 
 /// <summary>Conforming ground-truth tests for <see cref="double"/>.</summary>
 public sealed class ConformingTriangulationGroundTruthTests_Double
-    : ConformingTriangulationGroundTruthTestsBase<double> { }
+    : ConformingTriangulationGroundTruthTestsBase<double>
+{ }
 
 /// <summary>Conforming ground-truth tests for <see cref="float"/>.</summary>
 public sealed class ConformingTriangulationGroundTruthTests_Float
-    : ConformingTriangulationGroundTruthTestsBase<float> { }
+    : ConformingTriangulationGroundTruthTestsBase<float>
+{ }
 
 // ---------------------------------------------------------------------------
 // Crossing-edges ground-truth tests
@@ -443,11 +446,13 @@ public abstract class CrossingEdgesGroundTruthTestsBase<T>
 
 /// <summary>Crossing-edges tests for <see cref="double"/>.</summary>
 public sealed class CrossingEdgesGroundTruthTests_Double
-    : CrossingEdgesGroundTruthTestsBase<double> { }
+    : CrossingEdgesGroundTruthTestsBase<double>
+{ }
 
 /// <summary>Crossing-edges tests for <see cref="float"/>.</summary>
 public sealed class CrossingEdgesGroundTruthTests_Float
-    : CrossingEdgesGroundTruthTestsBase<float> { }
+    : CrossingEdgesGroundTruthTestsBase<float>
+{ }
 
 // ---------------------------------------------------------------------------
 // Special single-variant ground-truth tests (double only)

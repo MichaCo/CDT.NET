@@ -57,7 +57,7 @@ public sealed class IntersectingConstraintsException : TriangulationException
 /// Supports both constrained and conforming modes.
 /// </summary>
 /// <typeparam name="T">Floating-point coordinate type (float or double).</typeparam>
-public sealed partial class Triangulation<T>
+public sealed class Triangulation<T>
     where T : unmanaged, IFloatingPoint<T>, IMinMaxValue<T>, IRootFunctions<T>
 {
     // -------------------------------------------------------------------------
@@ -913,27 +913,6 @@ public sealed partial class Triangulation<T>
         }
     }
 
-    private void FlipEdge(int iT, int iTopo)
-    {
-        var t = _triangles[iT];
-        int oi = TriangleUtils.NeighborIndex(t, iTopo);
-        int ov = TriangleUtils.OpposedVertexIndex(oi);
-        int v1 = t.GetVertex(ov);
-        int v2 = t.GetVertex(TriangleUtils.Ccw(ov));
-        int n1 = t.GetNeighbor(ov);
-        int n3 = t.GetNeighbor(TriangleUtils.Cw(ov));
-
-        var tOpo = _triangles[iTopo];
-        int oi2 = TriangleUtils.NeighborIndex(tOpo, iT);
-        int ov2 = TriangleUtils.OpposedVertexIndex(oi2);
-        int v3 = tOpo.GetVertex(ov2);
-        int v4 = tOpo.GetVertex(TriangleUtils.Ccw(ov2));
-        int n4 = tOpo.GetNeighbor(ov2);
-        int n2 = tOpo.GetNeighbor(TriangleUtils.Cw(ov2));
-
-        FlipEdge(iT, iTopo, v1, v2, v3, v4, n1, n2, n3, n4);
-    }
-
     // -------------------------------------------------------------------------
     // Constraint edge insertion
     // -------------------------------------------------------------------------
@@ -1642,51 +1621,6 @@ public sealed partial class Triangulation<T>
         _kdTree?.Insert(iV, _vertices);
     }
 
-    private IEnumerable<int> GetKdTreeOrder(int start, int end, bool isFirst)
-    {
-        // BFS ordering from KD-tree for better cache behaviour on first insertion
-        // For subsequent insertions use random order
-        if (isFirst)
-        {
-            return BfsKdTreeOrder(start, end);
-        }
-        else
-        {
-            // Shuffle for randomized insert (avoids worst-case)
-            var indices = Enumerable.Range(start, end - start).ToArray();
-            var rng = new Random(42);
-            for (int i = indices.Length - 1; i > 0; i--)
-            {
-                int j = rng.Next(i + 1);
-                (indices[i], indices[j]) = (indices[j], indices[i]);
-            }
-            return indices;
-        }
-    }
-
-    private IEnumerable<int> BfsKdTreeOrder(int start, int end)
-    {
-        // Simple BFS ordering: midpoint-split
-        var result = new List<int>(end - start);
-        var queue = new Queue<(int, int)>();
-        queue.Enqueue((start, end));
-        while (queue.Count > 0)
-        {
-            var (lo, hi) = queue.Dequeue();
-            if (lo >= hi) continue;
-            int mid = (lo + hi) / 2;
-            result.Add(mid);
-            queue.Enqueue((lo, mid));
-            queue.Enqueue((mid + 1, hi));
-        }
-        return result;
-    }
-
-    private static IEnumerable<int> EnumerateRange(int start, int end)
-    {
-        for (int i = start; i < end; i++) yield return i;
-    }
-
     // -------------------------------------------------------------------------
     // Type-specific geometric operations (dispatched via T)
     // -------------------------------------------------------------------------
@@ -1844,8 +1778,7 @@ internal static class DictionaryExtensions
 /// Provides a covariant read-only view over a <see cref="Dictionary{TKey,TInner}"/>
 /// where <typeparamref name="TInner"/> is assignable to <typeparamref name="TOuter"/>.
 /// </summary>
-internal sealed class CovariantReadOnlyDictionary<TKey, TInner, TOuter>(
-    Dictionary<TKey, TInner> inner)
+internal sealed class CovariantReadOnlyDictionary<TKey, TInner, TOuter>(Dictionary<TKey, TInner> inner)
     : IReadOnlyDictionary<TKey, TOuter>
     where TKey : notnull
     where TInner : TOuter

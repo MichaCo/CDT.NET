@@ -79,7 +79,7 @@ internal static class BenchmarkInputReader
 public class ConstrainedSwedenBenchmarks
 {
     private List<V2d<double>> _vertices = null!;
-    private List<Edge>        _edges    = null!;
+    private List<Edge> _edges = null!;
 
     [GlobalSetup]
     public void Setup()
@@ -171,7 +171,7 @@ public class ConstrainedSwedenBenchmarks
 public class SmallDatasetBenchmarks
 {
     private List<V2d<double>> _vertices = null!;
-    private List<Edge>        _edges    = null!;
+    private List<Edge> _edges = null!;
 
     [GlobalSetup]
     public void Setup()

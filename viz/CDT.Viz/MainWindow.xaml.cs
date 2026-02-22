@@ -33,10 +33,10 @@ internal sealed class TriangulationVisual : FrameworkElement
     // -----------------------------------------------------------------------
     // Colors (matching the Qt visualizer palette)
     // -----------------------------------------------------------------------
-    private static readonly Pen s_triPen      = MakePen(Color.FromRgb(150, 150, 150), 1.5);
-    private static readonly Pen s_outerPen    = MakePen(Color.FromRgb(220, 220, 220), 1.2);
-    private static readonly Pen s_fixedPen    = MakePen(Color.FromRgb(50,  50,  50),  2.5);
-    private static readonly Pen s_pointPen    = MakePen(Color.FromRgb(3,   102, 214), 5.0);
+    private static readonly Pen s_triPen = MakePen(Color.FromRgb(150, 150, 150), 1.5);
+    private static readonly Pen s_outerPen = MakePen(Color.FromRgb(220, 220, 220), 1.2);
+    private static readonly Pen s_fixedPen = MakePen(Color.FromRgb(50, 50, 50), 2.5);
+    private static readonly Pen s_pointPen = MakePen(Color.FromRgb(3, 102, 214), 5.0);
     private static readonly Brush s_indexBrush = new SolidColorBrush(Color.FromRgb(150, 0, 150));
     private static readonly Brush s_triIdxBrush = new SolidColorBrush(Color.FromRgb(0, 150, 150));
     private static readonly Typeface s_typeface = new Typeface("Segoe UI");
@@ -63,7 +63,7 @@ internal sealed class TriangulationVisual : FrameworkElement
     // -----------------------------------------------------------------------
     public Point SceneToScreen(V2d<double> v)
     {
-        double cx = ActualWidth  / 2.0;
+        double cx = ActualWidth / 2.0;
         double cy = ActualHeight / 2.0;
         return new Point(
             Scale * v.X + cx + Translation.X,
@@ -72,7 +72,7 @@ internal sealed class TriangulationVisual : FrameworkElement
 
     public V2d<double> ScreenToScene(Point pt)
     {
-        double cx = ActualWidth  / 2.0;
+        double cx = ActualWidth / 2.0;
         double cy = ActualHeight / 2.0;
         double sx = (pt.X - Translation.X - cx) / Scale;
         double sy = -(pt.Y - Translation.Y - cy) / Scale;
@@ -180,14 +180,14 @@ public partial class MainWindow : Window
     // Fields
     // -----------------------------------------------------------------------
     private List<V2d<double>> _loadedPoints = [];
-    private List<Edge>        _loadedEdges  = [];
+    private List<Edge> _loadedEdges = [];
     private Triangulation<double>? _cdt;
 
     private readonly TriangulationVisual _visual = new();
 
     // Pan/zoom state
-    private bool   _isPanning;
-    private Point  _panStart;
+    private bool _isPanning;
+    private Point _panStart;
     private Vector _panStartTranslation;
 
     // Option guards to suppress re-triangulation during init
@@ -205,7 +205,7 @@ public partial class MainWindow : Window
     private void OnLoaded(object sender, RoutedEventArgs e)
     {
         // Add the visual element to fill the canvas border
-        _visual.Width  = double.NaN;
+        _visual.Width = double.NaN;
         _visual.Height = double.NaN;
         TriCanvas.Children.Add(_visual);
         Canvas.SetLeft(_visual, 0);
@@ -213,10 +213,10 @@ public partial class MainWindow : Window
 
         // Stretch visual to fill the border
         _visual.HorizontalAlignment = HorizontalAlignment.Stretch;
-        _visual.VerticalAlignment   = VerticalAlignment.Stretch;
+        _visual.VerticalAlignment = VerticalAlignment.Stretch;
         CanvasBorder.SizeChanged += (_, _) =>
         {
-            _visual.Width  = CanvasBorder.ActualWidth;
+            _visual.Width = CanvasBorder.ActualWidth;
             _visual.Height = CanvasBorder.ActualHeight;
         };
 
@@ -243,7 +243,7 @@ public partial class MainWindow : Window
     {
         var dlg = new OpenFileDialog
         {
-            Title  = "Load CDT input file",
+            Title = "Load CDT input file",
             Filter = "Text files (*.txt)|*.txt|All files (*.*)|*.*",
         };
         if (dlg.ShowDialog() != true) return;
@@ -271,7 +271,7 @@ public partial class MainWindow : Window
         var dlg = new SaveFileDialog { Filter = "PNG image|*.png", FileName = "cdt_screenshot.png" };
         if (dlg.ShowDialog() != true) return;
 
-        int w = (int)Math.Max(_visual.ActualWidth,  1);
+        int w = (int)Math.Max(_visual.ActualWidth, 1);
         int h = (int)Math.Max(_visual.ActualHeight, 1);
         var rtb = new RenderTargetBitmap(w, h, 96, 96, PixelFormats.Pbgra32);
         rtb.Render(_visual);
@@ -331,7 +331,7 @@ public partial class MainWindow : Window
     {
         using var sr = new StreamReader(path);
         var first = sr.ReadLine()!.Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries);
-        int nPts   = int.Parse(first[0]);
+        int nPts = int.Parse(first[0]);
         int nEdges = int.Parse(first[1]);
         var pts = new List<V2d<double>>(nPts);
         for (int i = 0; i < nPts; i++)
@@ -381,7 +381,7 @@ public partial class MainWindow : Window
     private void Display_Changed(object sender, RoutedEventArgs e)
     {
         if (_initializing || _visual == null) return;
-        _visual.ShowPoints  = ShowPoints.IsChecked == true;
+        _visual.ShowPoints = ShowPoints.IsChecked == true;
         _visual.ShowIndices = ShowIndices.IsChecked == true;
         _visual.InvalidateVisual();
     }
@@ -395,20 +395,20 @@ public partial class MainWindow : Window
 
         // Vertex / edge limits
         int vLimit = (int)Math.Min(VertexLimit.Value, _loadedPoints.Count);
-        int eLimit = (int)Math.Min(EdgeLimit.Value,  _loadedEdges.Count);
+        int eLimit = (int)Math.Min(EdgeLimit.Value, _loadedEdges.Count);
 
-        var pts   = vLimit < _loadedPoints.Count ? _loadedPoints[..vLimit] : _loadedPoints;
-        var edges = eLimit < _loadedEdges.Count  ? _loadedEdges[..eLimit]  : _loadedEdges;
+        var pts = vLimit < _loadedPoints.Count ? _loadedPoints[..vLimit] : _loadedPoints;
+        var edges = eLimit < _loadedEdges.Count ? _loadedEdges[..eLimit] : _loadedEdges;
 
         // Options
-        var order    = InsertionOrder.SelectedIndex == 1
+        var order = InsertionOrder.SelectedIndex == 1
             ? VertexInsertionOrder.AsProvided
             : VertexInsertionOrder.Auto;
         var strategy = IntersectingEdges.SelectedIndex == 1
             ? IntersectingConstraintEdges.NotAllowed
             : IntersectingConstraintEdges.TryResolve;
         double minDist = double.TryParse(MinDist.Text, NumberStyles.Float, CultureInfo.InvariantCulture, out double md) ? md : 1e-6;
-        bool fixDups   = FixDuplicates.IsChecked == true;
+        bool fixDups = FixDuplicates.IsChecked == true;
         bool conforming = TriangulationType.SelectedIndex == 1;
 
         _cdt = new Triangulation<double>(order, strategy, minDist);
@@ -454,12 +454,12 @@ public partial class MainWindow : Window
         }
 
         // Push to visual
-        _visual.Vertices       = _cdt.Vertices.ToList();
-        _visual.Triangles      = _cdt.Triangles.ToList();
-        _visual.FixedEdges     = new HashSet<Edge>(_cdt.FixedEdges);
+        _visual.Vertices = _cdt.Vertices.ToList();
+        _visual.Triangles = _cdt.Triangles.ToList();
+        _visual.FixedEdges = new HashSet<Edge>(_cdt.FixedEdges);
         _visual.ShowSuperTriangle = FinalizeMode.SelectedIndex == 0;
-        _visual.ShowPoints     = ShowPoints.IsChecked  == true;
-        _visual.ShowIndices    = ShowIndices.IsChecked == true;
+        _visual.ShowPoints = ShowPoints.IsChecked == true;
+        _visual.ShowIndices = ShowIndices.IsChecked == true;
         _visual.InvalidateVisual();
 
         StatsLabel.Text = $"Vertices: {_cdt.Vertices.Count}\n" +
@@ -484,7 +484,7 @@ public partial class MainWindow : Window
         if (dx == 0) dx = 1;
         if (dy == 0) dy = 1;
 
-        double w = Math.Max(_visual.ActualWidth,  1);
+        double w = Math.Max(_visual.ActualWidth, 1);
         double h = Math.Max(_visual.ActualHeight, 1);
 
         _visual.Scale = Math.Min(w / dx, h / dy) * 0.9;
@@ -504,7 +504,7 @@ public partial class MainWindow : Window
         double oldScale = _visual.Scale;
         _visual.Scale *= factor;
 
-        double cx = _visual.ActualWidth  / 2.0;
+        double cx = _visual.ActualWidth / 2.0;
         double cy = _visual.ActualHeight / 2.0;
         _visual.Translation = new Vector(
             _visual.Translation.X + (pos.X - cx) * (1 - factor),
@@ -551,12 +551,12 @@ public partial class MainWindow : Window
     // -----------------------------------------------------------------------
     private void UpdateLimitSliders()
     {
-        int nPts   = Math.Max(_loadedPoints.Count, 1);
-        int nEdges = Math.Max(_loadedEdges.Count,  1);
+        int nPts = Math.Max(_loadedPoints.Count, 1);
+        int nEdges = Math.Max(_loadedEdges.Count, 1);
         VertexLimit.Maximum = nPts;
-        VertexLimit.Value   = nPts;
-        EdgeLimit.Maximum   = nEdges;
-        EdgeLimit.Value     = nEdges;
+        VertexLimit.Value = nPts;
+        EdgeLimit.Maximum = nEdges;
+        EdgeLimit.Value = nEdges;
         UpdateLimitLabels();
     }
 
@@ -565,6 +565,6 @@ public partial class MainWindow : Window
         int vLim = (int)VertexLimit.Value;
         int eLim = (int)EdgeLimit.Value;
         VertexLimitLabel.Text = vLim >= _loadedPoints.Count ? "All" : vLim.ToString();
-        EdgeLimitLabel.Text   = eLim >= _loadedEdges.Count  ? "All" : eLim.ToString();
+        EdgeLimitLabel.Text = eLim >= _loadedEdges.Count ? "All" : eLim.ToString();
     }
 }

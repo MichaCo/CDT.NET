@@ -20,7 +20,7 @@ public sealed class DuplicatesInfo
     public List<int> Duplicates { get; }
 
     /// <inheritdoc/>
-    public DuplicatesInfo(int[] mapping, List<int> duplicates)
+    internal DuplicatesInfo(int[] mapping, List<int> duplicates)
     {
         Mapping = mapping;
         Duplicates = duplicates;
