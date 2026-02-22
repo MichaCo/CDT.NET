@@ -6,6 +6,8 @@
 // artem-ogre/CDT (predicates.h, predicates::adaptive namespace).
 
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
+using System.Runtime.Intrinsics;
 
 namespace CDT.Predicates;
 
@@ -60,6 +62,7 @@ public static class PredicatesAdaptive
     /// </returns>
     /// <seealso cref="PredicatesExact.Orient2d(double, double, double, double, double, double)"/>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    [SkipLocalsInit]
     public static double Orient2d(
         double ax, double ay, double bx, double by, double cx, double cy)
     {
@@ -193,6 +196,7 @@ public static class PredicatesAdaptive
     /// </returns>
     /// <seealso cref="PredicatesExact.InCircle(double, double, double, double, double, double, double, double)"/>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    [SkipLocalsInit]
     public static double InCircle(
         double ax, double ay, double bx, double by,
         double cx, double cy, double dx, double dy)
@@ -367,8 +371,14 @@ public static class PredicatesAdaptive
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal static double MultTail(double a, double b, double p)
     {
-        var (aHi, aLo) = Split(a);
-        var (bHi, bLo) = Split(b);
+        double c = SplitterD * a;
+        double aBig = c - a;
+        double aHi = c - aBig;
+        double aLo = a - aHi;
+        c = SplitterD * b;
+        double bBig = c - b;
+        double bHi = c - bBig;
+        double bLo = b - bHi;
         double y = p - aHi * bHi;
         y -= aLo * bHi;
         y -= aHi * bLo;
@@ -379,6 +389,7 @@ public static class PredicatesAdaptive
     /// Exact expansion of <c>ax*by - ay*bx</c> (up to 4 non-zero terms).
     /// Matches Lenthe <c>ExpansionBase::TwoTwoDiff</c>.
     /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal static int TwoTwoDiff(double ax, double by, double ay, double bx, Span<double> h)
     {
         double axby1 = ax * by;
@@ -440,7 +451,10 @@ public static class PredicatesAdaptive
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal static double DekkersPresplit(double a, double bHi, double bLo, double p)
     {
-        var (aHi, aLo) = Split(a);
+        double c = SplitterD * a;
+        double aBig = c - a;
+        double aHi = c - aBig;
+        double aLo = a - aHi;
         double y = p - aHi * bHi;
         y -= aLo * bHi;
         y -= aHi * bLo;
@@ -451,6 +465,7 @@ public static class PredicatesAdaptive
     /// Computes <c>e*s*s + e*t*t</c> as an expansion (two ScaleExpansion calls each, then sum).
     /// Max output: 32 terms for 4-term input (used for InCircle Stage B lift terms).
     /// </summary>
+    [SkipLocalsInit]
     internal static int ScaleExpansionSum(Span<double> e, int elen, double s, double t, Span<double> h)
     {
         Span<double> es = stackalloc double[8];
@@ -470,6 +485,7 @@ public static class PredicatesAdaptive
     /// Merge-then-accumulate two expansions. Matches Lenthe <c>ExpansionBase::ExpansionSum</c>:
     /// std::merge by |value| (stable), then sequential grow-expansion accumulation.
     /// </summary>
+    [SkipLocalsInit]
     internal static int ExpansionSum(Span<double> e, int elen, Span<double> f, int flen, Span<double> h)
     {
         if (elen == 0 && flen == 0) { return 0; }
@@ -521,9 +537,21 @@ public static class PredicatesAdaptive
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal static double Estimate(Span<double> e, int elen)
     {
-        double sum = 0.0;
-        for (int i = 0; i < elen; i++) { sum += e[i]; }
-        return sum;
+        if (Vector256.IsHardwareAccelerated && elen >= 4)
+        {
+            ref double eRef = ref MemoryMarshal.GetReference(e);
+            Vector256<double> acc = Vector256<double>.Zero;
+            int i = 0;
+            for (; i <= elen - 4; i += 4)
+                acc = Vector256.Add(acc, Vector256.LoadUnsafe(ref eRef, (nuint)i));
+            double sum = Vector256.Sum(acc);
+            for (; i < elen; i++) sum += Unsafe.Add(ref eRef, i);
+            return sum;
+        }
+
+        double s = 0.0;
+        for (int i = 0; i < elen; i++) { s += e[i]; }
+        return s;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -536,8 +564,21 @@ public static class PredicatesAdaptive
         return 0.0;
     }
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal static void NegateInto(Span<double> src, int len, Span<double> dst)
     {
+        if (Vector256.IsHardwareAccelerated && len >= 4)
+        {
+            ref double srcRef = ref MemoryMarshal.GetReference(src);
+            ref double dstRef = ref MemoryMarshal.GetReference(dst);
+            int i = 0;
+            for (; i <= len - 4; i += 4)
+                Vector256.Negate(Vector256.LoadUnsafe(ref srcRef, (nuint)i))
+                         .StoreUnsafe(ref dstRef, (nuint)i);
+            for (; i < len; i++) dst[i] = -src[i];
+            return;
+        }
+
         for (int i = 0; i < len; i++) { dst[i] = -src[i]; }
     }
 }

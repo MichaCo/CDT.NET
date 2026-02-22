@@ -4,6 +4,8 @@
 //
 // Geometric predicates — exact (arbitrary-precision) paths.
 
+using System.Runtime.CompilerServices;
+
 namespace CDT.Predicates;
 
 /// <summary>
@@ -41,6 +43,7 @@ public static class PredicatesExact
     /// zero if collinear, or a negative value if to the right.
     /// </returns>
     /// <seealso cref="PredicatesAdaptive.Orient2d(double, double, double, double, double, double)"/>
+    [SkipLocalsInit]
     public static double Orient2d(
         double ax, double ay, double bx, double by, double cx, double cy)
     {
@@ -122,6 +125,7 @@ public static class PredicatesExact
     /// zero if on, or a negative value if outside.
     /// </returns>
     /// <seealso cref="PredicatesAdaptive.InCircle(double, double, double, double, double, double, double, double)"/>
+    [SkipLocalsInit]
     public static double InCircle(
         double ax, double ay, double bx, double by,
         double cx, double cy, double dx, double dy)
