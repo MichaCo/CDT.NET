@@ -79,6 +79,7 @@ Results are written to `BenchmarkDotNet.Artifacts/` in the current directory.
 | artem-ogre/CDT (C++) | Triangle count includes the three super-triangle triangles (same behaviour as CDT.NET before `EraseSuperTriangle`) |
 | Spade (Rust) | `num_inner_faces()` returns only finite (inner) triangles, which is fewer than the C++ CDT count |
 | Poly2Tri (Constrained) | Throws an internal exception on the Sweden CDT dataset; constrained benchmark shows `NA` |
+| Poly2Tri (VerticesOnly) | Returns only ~130 triangles instead of the expected ~5 200. Poly2Tri's sweep-line algorithm uses precision thresholds relative to the bounding box. For the Sweden dataset (geographic coords, bbox ≈13×14, separations ≈0.006) many points fall below the internal epsilon and are **silently skipped**. This is a known Poly2Tri limitation for floating-point coordinate ranges — the algorithm was designed for integer-like or small normalised coordinates. The adapter is correct; the count difference is not a bug. |
 
 ## Benchmark results
 

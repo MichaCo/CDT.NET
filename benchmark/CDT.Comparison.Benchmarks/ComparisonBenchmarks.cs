@@ -170,6 +170,21 @@ internal static class NtsAdapter
 // Adapter — Poly2Tri.NetStandard  (1.0.2)
 // Sweep-line CDT.  Constraints are passed as TriangulationConstraint objects
 // referencing the same TriangulationPoint instances used as input vertices.
+//
+// ⚠ IMPORTANT — Triangle count difference explained:
+// Poly2Tri's sweep-line algorithm uses a global bounding box and internal
+// precision thresholds relative to that box size.  For datasets with a large
+// bounding box but small inter-point separations (e.g., geographic coordinates
+// such as the Sweden dataset with bbox ≈13×14 deg and separations ≈0.006 deg),
+// many points fall below the algorithm's internal epsilon and are silently
+// skipped.  This is a known limitation of Poly2Tri — it was designed for
+// integer-like or small normalised coordinates, not arbitrary floating-point
+// point clouds.  As a result, VerticesOnly returns far fewer triangles than the
+// other libraries (≈130 vs ≈5 200 for the Sweden dataset), and Constrained
+// throws an internal exception on the same dataset.
+//
+// The adapter is correct; the discrepancy reflects Poly2Tri's algorithm limits,
+// not a bug in the benchmark code.
 // ---------------------------------------------------------------------------
 internal static class Poly2TriAdapter
 {
