@@ -37,6 +37,8 @@
   <PropertyGroup>
     <_CdtNativeDir>$(MSBuildThisFileDirectory)native/cdt_wrapper</_CdtNativeDir>
     <_CdtBuildDir>$(_CdtNativeDir)/build</_CdtBuildDir>
+    <_SpadeNativeDir>$(MSBuildThisFileDirectory)native/spade_wrapper</_SpadeNativeDir>
+    <_SpadeReleaseDir>$(_SpadeNativeDir)/target/release</_SpadeReleaseDir>
   </PropertyGroup>
 
   <Target Name="BuildCdtNative" BeforeTargets="Build">
@@ -45,6 +47,18 @@
     <Exec Command="cmake --build &quot;$(_CdtBuildDir)&quot; --config Release" />
     <MakeDir Directories="$(OutputPath)" />
     <Copy SourceFiles="$(_CdtBuildDir)/libcdt_wrapper.so"
+          DestinationFolder="$(OutputPath)"
+          SkipUnchangedFiles="true" />
+  </Target>
+
+  <!--
+    Build the Spade Rust wrapper.
+    Requires: cargo (Rust toolchain).
+  -->
+  <Target Name="BuildSpadeNative" BeforeTargets="Build">
+    <Exec Command="cargo build --release --manifest-path &quot;$(_SpadeNativeDir)/Cargo.toml&quot;" />
+    <MakeDir Directories="$(OutputPath)" />
+    <Copy SourceFiles="$(_SpadeReleaseDir)/libspade_wrapper.so"
           DestinationFolder="$(OutputPath)"
           SkipUnchangedFiles="true" />
   </Target>

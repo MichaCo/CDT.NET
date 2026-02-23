@@ -225,6 +225,29 @@ internal static partial class NativeCdtAdapter
 }
 
 
+// ---------------------------------------------------------------------------
+// Adapter — Spade  (Rust via P/Invoke, spade 2.15.0)
+// Incremental CDT using Spade's ConstrainedDelaunayTriangulation.
+// Returns num_inner_faces() (finite triangles, excludes the infinite face).
+// Built from source via cargo; produces libspade_wrapper.so.
+// ---------------------------------------------------------------------------
+internal static partial class SpadeAdapter
+{
+    private const string Lib = "spade_wrapper";
+
+    [LibraryImport(Lib, EntryPoint = "spade_cdt")]
+    private static partial int SpadeTriangulate(
+        double[] xs, double[] ys, int nVerts,
+        int[] ev1, int[] ev2, int nEdges);
+
+    public static int VerticesOnly(double[] xs, double[] ys) =>
+        SpadeTriangulate(xs, ys, xs.Length, [], [], 0);
+
+    public static int Constrained(double[] xs, double[] ys, int[] ev1, int[] ev2) =>
+        SpadeTriangulate(xs, ys, xs.Length, ev1, ev2, ev1.Length);
+}
+
+
 // (~2 600 vertices, ~2 600 constraint edges)
 // ---------------------------------------------------------------------------
 [MemoryDiagnoser]
@@ -264,6 +287,10 @@ public class ComparisonBenchmarks
     [BenchmarkCategory("VerticesOnly")]
     public int VO_NativeCdt() => NativeCdtAdapter.VerticesOnly(_xs, _ys);
 
+    [Benchmark(Description = "Spade (Rust)")]
+    [BenchmarkCategory("VerticesOnly")]
+    public int VO_Spade() => SpadeAdapter.VerticesOnly(_xs, _ys);
+
     // -- Constrained ---------------------------------------------------------
 
     [Benchmark(Baseline = true, Description = "CDT.NET")]
@@ -285,4 +312,8 @@ public class ComparisonBenchmarks
     [Benchmark(Description = "artem-ogre/CDT (C++)")]
     [BenchmarkCategory("Constrained")]
     public int CDT_NativeCdt() => NativeCdtAdapter.Constrained(_xs, _ys, _ev1, _ev2);
+
+    [Benchmark(Description = "Spade (Rust)")]
+    [BenchmarkCategory("Constrained")]
+    public int CDT_Spade() => SpadeAdapter.Constrained(_xs, _ys, _ev1, _ev2);
 }
