@@ -94,28 +94,31 @@ Measured on **AMD EPYC 7763 2.45 GHz, 1 CPU, 4 logical / 2 physical cores, .NET 
 
 ### Constrained CDT
 
-| Library | Mean | Ratio | Allocated | Alloc ratio |
-|---------|-----:|------:|----------:|------------:|
-| **CDT.NET** *(baseline)* | 1,740 μs | 1.00 | 494 KB | 1.00 |
-| artem-ogre/CDT (C++) | 1,952 μs | 1.12 | — | 0.00 |
-| Spade (Rust) | 1,937 μs | 1.11 | — | 0.00 |
-| Triangle.NET | 6,115 μs | 3.52 | 2,817 KB | 5.70 |
-| NTS (Conforming CDT) | 51,643 μs | 29.69 | 59,938 KB | 121.19 |
-| CGAL (C++) | *not yet measured* | — | — | — |
+| Library | Mean | Error | StdDev | Ratio | Allocated | Alloc Ratio |
+|---------|-----:|------:|-------:|------:|----------:|------------:|
+| **CDT.NET** *(baseline)* | 1,759 μs | 143.0 μs | 7.8 μs | 1.00 | 495 KB | 1.00 |
+| artem-ogre/CDT (C++) | 1,961 μs | 85.4 μs | 4.7 μs | 1.11 | — | 0.00 |
+| Spade (Rust) | 1,989 μs | 120.0 μs | 6.6 μs | 1.13 | — | 0.00 |
+| CGAL (C++) | 3,659 μs | 288.2 μs | 15.8 μs | 2.08 | — | 0.00 |
+| Triangle.NET | 6,405 μs | 2,193.7 μs | 120.2 μs | 3.64 | 2,817 KB | 5.70 |
+| NTS (Conforming CDT) | 54,282 μs | 10,703.7 μs | 586.7 μs | 30.86 | 59,937 KB | 121.19 |
 
 ### Vertices-only (Delaunay, no constraints)
 
-| Library | Mean | Ratio | Allocated | Alloc ratio |
-|---------|-----:|------:|----------:|------------:|
-| **CDT.NET** *(baseline)* | 1,604 μs | 1.00 | 322 KB | 1.00 |
-| artem-ogre/CDT (C++) | 1,578 μs | 0.98 | — | 0.00 |
-| Triangle.NET | 2,064 μs | 1.29 | 1,760 KB | 5.47 |
-| Spade (Rust) | 1,606 μs | 1.00 | — | 0.00 |
-| NTS | 7,876 μs | 4.91 | 4,372 KB | 13.58 |
-| CGAL (C++) | *not yet measured* | — | — | — |
+| Library | Mean | Error | StdDev | Ratio | Allocated | Alloc Ratio |
+|---------|-----:|------:|-------:|------:|----------:|------------:|
+| **CDT.NET** *(baseline)* | 1,584 μs | 135.3 μs | 7.4 μs | 1.00 | 322 KB | 1.00 |
+| artem-ogre/CDT (C++) | 1,586 μs | 54.8 μs | 3.0 μs | 1.00 | — | 0.00 |
+| Spade (Rust) | 1,613 μs | 27.3 μs | 1.5 μs | 1.02 | — | 0.00 |
+| CGAL (C++) | 3,254 μs | 104.8 μs | 5.7 μs | 2.05 | — | 0.00 |
+| Triangle.NET | 2,134 μs | 298.8 μs | 16.4 μs | 1.35 | 1,760 KB | 5.47 |
+| NTS | 7,960 μs | 1,199.3 μs | 65.7 μs | 5.03 | 4,373 KB | 13.58 |
 
-**Key takeaways (excluding CGAL which is newly added):**
-- CDT.NET matches the original C++ library and Spade within ≤12% on constrained triangulation.
-- CDT.NET allocates ~5–120× less memory than Triangle.NET and NTS.
-- NTS (conforming CDT) is ~30× slower and allocates ~120× more memory due to Steiner-point insertion.
+### Key takeaways
+
+- **CDT.NET matches the original C++ implementation (artem-ogre/CDT) and Spade within ≤13%** on both constrained and unconstrained triangulation.
+- **CGAL** runs at ~2× CDT.NET. CGAL's `Constrained_Delaunay_triangulation_2` uses a more complex data structure (half-edge DCEL) with additional bookkeeping overhead vs. CDT.NET's compact flat arrays. For raw triangulation throughput CDT.NET is faster.
+- **CDT.NET allocates 5–120× less managed memory** than Triangle.NET and NTS: Triangle.NET allocates ~5.7× more, NTS ~121× more.
+- **NTS (conforming CDT)** is ~30× slower and allocates ~120× more memory — Steiner-point insertion is the main cost, and the result is semantically different (not true CDT).
+- Native wrappers (artem-ogre/CDT, CGAL, Spade) show zero managed allocations as expected for P/Invoke calls into unmanaged code.
 
