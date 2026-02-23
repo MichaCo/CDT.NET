@@ -19,8 +19,6 @@
     <PackageReference Include="Unofficial.Triangle.NET" Version="0.0.1" />
     <!-- NetTopologySuite: conforming CDT (may insert Steiner points) -->
     <PackageReference Include="NetTopologySuite" Version="2.6.0" />
-    <!-- Poly2Tri: sweep-line CDT, supports constrained edges -->
-    <PackageReference Include="Poly2Tri.NetStandard" Version="1.0.2" />
   </ItemGroup>
 
   <!-- Copy test input files so benchmarks can find them at runtime -->
@@ -32,21 +30,23 @@
 
   <!--
     ═══════════════════════════════════════════════════════════════════════════
-    Native wrapper configuration  (artem-ogre/CDT C++ and Spade Rust)
+    Native wrapper configuration  (artem-ogre/CDT C++, CGAL C++, Spade Rust)
 
     Requirements
-      C++ wrapper : cmake ≥ 3.20, a C++17 compiler, internet access (FetchContent)
+      C++ wrappers: cmake ≥ 3.20, a C++17 compiler, internet access (FetchContent)
       Rust wrapper: cargo / rustup, internet access (crates.io)
 
     Output filename conventions (all end up in $(OutputPath)):
-      Windows : cdt_wrapper.dll      / spade_wrapper.dll
-      macOS   : libcdt_wrapper.dylib / libspade_wrapper.dylib
-      Linux   : libcdt_wrapper.so    / libspade_wrapper.so
+      Windows : cdt_wrapper.dll      / cgal_wrapper.dll      / spade_wrapper.dll
+      macOS   : libcdt_wrapper.dylib / libcgal_wrapper.dylib / libspade_wrapper.dylib
+      Linux   : libcdt_wrapper.so    / libcgal_wrapper.so    / libspade_wrapper.so
     ═══════════════════════════════════════════════════════════════════════════
   -->
   <PropertyGroup>
     <_CdtNativeDir>$(MSBuildThisFileDirectory)native/cdt_wrapper</_CdtNativeDir>
     <_CdtBuildDir>$(_CdtNativeDir)/build</_CdtBuildDir>
+    <_CgalNativeDir>$(MSBuildThisFileDirectory)native/cgal_wrapper</_CgalNativeDir>
+    <_CgalBuildDir>$(_CgalNativeDir)/build</_CgalBuildDir>
     <_SpadeNativeDir>$(MSBuildThisFileDirectory)native/spade_wrapper</_SpadeNativeDir>
     <_SpadeReleaseDir>$(_SpadeNativeDir)/target/release</_SpadeReleaseDir>
 
@@ -59,13 +59,14 @@
     <_NativeLibExt Condition="'$(_NativeLibExt)' == ''">.so</_NativeLibExt>
 
     <_CdtLibFile>$(_CdtBuildDir)/$(_NativeLibPrefix)cdt_wrapper$(_NativeLibExt)</_CdtLibFile>
+    <_CgalLibFile>$(_CgalBuildDir)/$(_NativeLibPrefix)cgal_wrapper$(_NativeLibExt)</_CgalLibFile>
     <_SpadeLibFile>$(_SpadeReleaseDir)/$(_NativeLibPrefix)spade_wrapper$(_NativeLibExt)</_SpadeLibFile>
   </PropertyGroup>
 
   <!-- ── artem-ogre/CDT C++ wrapper ──────────────────────────────────────── -->
 
-  <!-- Friendly error when cmake is not on PATH -->
-  <Target Name="CheckCmake" BeforeTargets="BuildCdtNative">
+  <!-- Friendly error when cmake is not on PATH (shared by all C++ wrappers) -->
+  <Target Name="CheckCmake" BeforeTargets="BuildCdtNative;BuildCgalNative">
     <Exec Command="cmake --version"
           IgnoreExitCode="true"
           ConsoleToMSBuild="true"
@@ -74,7 +75,7 @@
       <Output TaskParameter="ExitCode" PropertyName="_CmakeExitCode" />
     </Exec>
     <Error Condition="'$(_CmakeExitCode)' != '0'"
-           Text="cmake was not found on PATH. It is required to build the artem-ogre/CDT C++ wrapper. Install CMake from https://cmake.org/download/ and ensure it is on your PATH." />
+           Text="cmake was not found on PATH. It is required to build the C++ wrappers. Install CMake from https://cmake.org/download/ and ensure it is on your PATH." />
   </Target>
 
   <Target Name="BuildCdtNative" BeforeTargets="Build" DependsOnTargets="CheckCmake">
@@ -83,6 +84,18 @@
     <Exec Command="cmake --build &quot;$(_CdtBuildDir)&quot; --config Release" />
     <MakeDir Directories="$(OutputPath)" />
     <Copy SourceFiles="$(_CdtLibFile)"
+          DestinationFolder="$(OutputPath)"
+          SkipUnchangedFiles="true" />
+  </Target>
+
+  <!-- ── CGAL C++ wrapper ─────────────────────────────────────────────────── -->
+
+  <Target Name="BuildCgalNative" BeforeTargets="Build" DependsOnTargets="CheckCmake">
+    <MakeDir Directories="$(_CgalBuildDir)" />
+    <Exec Command="cmake -S &quot;$(_CgalNativeDir)&quot; -B &quot;$(_CgalBuildDir)&quot; -DCMAKE_BUILD_TYPE=Release" />
+    <Exec Command="cmake --build &quot;$(_CgalBuildDir)&quot; --config Release" />
+    <MakeDir Directories="$(OutputPath)" />
+    <Copy SourceFiles="$(_CgalLibFile)"
           DestinationFolder="$(OutputPath)"
           SkipUnchangedFiles="true" />
   </Target>

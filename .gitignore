@@ -53,6 +53,7 @@ BenchmarkDotNet.Artifacts/
 
 # Native build artifacts
 benchmark/CDT.Comparison.Benchmarks/native/cdt_wrapper/build/
+benchmark/CDT.Comparison.Benchmarks/native/cgal_wrapper/build/
 benchmark/CDT.Comparison.Benchmarks/native/spade_wrapper/target/
 
 # OS generated files

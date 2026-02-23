@@ -16,9 +16,6 @@ using TnMesher = TriangleNet.Meshing.GenericMesher;
 using TnPolygon = TriangleNet.Geometry.Polygon;
 using TnSegment = TriangleNet.Geometry.Segment;
 using TnVertex = TriangleNet.Geometry.Vertex;
-using P2tPoint = Poly2Tri.Triangulation.TriangulationPoint;
-using P2tConstraint = Poly2Tri.Triangulation.TriangulationConstraint;
-using P2tCps = Poly2Tri.Triangulation.Sets.ConstrainedPointSet;
 using System.Runtime.InteropServices;
 
 // ---------------------------------------------------------------------------
@@ -166,57 +163,6 @@ internal static class NtsAdapter
         return builder.GetTriangles(Gf).NumGeometries;
     }
 }
-// ---------------------------------------------------------------------------
-// Adapter — Poly2Tri.NetStandard  (1.0.2)
-// Sweep-line CDT.  Constraints are passed as TriangulationConstraint objects
-// referencing the same TriangulationPoint instances used as input vertices.
-//
-// ⚠ IMPORTANT — Triangle count difference explained:
-// Poly2Tri's sweep-line algorithm uses a global bounding box and internal
-// precision thresholds relative to that box size.  For datasets with a large
-// bounding box but small inter-point separations (e.g., geographic coordinates
-// such as the Sweden dataset with bbox ≈13×14 deg and separations ≈0.006 deg),
-// many points fall below the algorithm's internal epsilon and are silently
-// skipped.  This is a known limitation of Poly2Tri — it was designed for
-// integer-like or small normalised coordinates, not arbitrary floating-point
-// point clouds.  As a result, VerticesOnly returns far fewer triangles than the
-// other libraries (≈130 vs ≈5 200 for the Sweden dataset), and Constrained
-// throws an internal exception on the same dataset.
-//
-// The adapter is correct; the discrepancy reflects Poly2Tri's algorithm limits,
-// not a bug in the benchmark code.
-// ---------------------------------------------------------------------------
-internal static class Poly2TriAdapter
-{
-    public static int VerticesOnly(double[] xs, double[] ys)
-    {
-        var pts = new List<P2tPoint>(xs.Length);
-        for (int i = 0; i < xs.Length; i++)
-            pts.Add(new P2tPoint(xs[i], ys[i], 0));
-
-        var cps = new P2tCps(pts);
-        Poly2Tri.P2T.Triangulate(cps, Poly2Tri.Triangulation.TriangulationAlgorithm.DTSweep);
-        return cps.Triangles.Count;
-    }
-
-    public static int Constrained(double[] xs, double[] ys, int[] ev1, int[] ev2)
-    {
-        var pts = new List<P2tPoint>(xs.Length);
-        for (int i = 0; i < xs.Length; i++)
-            pts.Add(new P2tPoint(xs[i], ys[i], 0));
-
-        // TriangulationConstraint requires the *same* TriangulationPoint
-        // instances that are in the points list.
-        var constraints = new List<P2tConstraint>(ev1.Length);
-        for (int i = 0; i < ev1.Length; i++)
-            constraints.Add(new P2tConstraint(pts[ev1[i]], pts[ev2[i]]));
-
-        var cps = new P2tCps(pts, constraints);
-        Poly2Tri.P2T.Triangulate(cps, Poly2Tri.Triangulation.TriangulationAlgorithm.DTSweep);
-        return cps.Triangles.Count;
-    }
-}
-
 
 // ---------------------------------------------------------------------------
 // Adapter — artem-ogre/CDT  (C++ via P/Invoke)
@@ -263,6 +209,32 @@ internal static partial class SpadeAdapter
 }
 
 
+// ---------------------------------------------------------------------------
+// Adapter — CGAL  (C++ via P/Invoke, CGAL 5.x/6.x)
+// Uses the Exact_predicates_inexact_constructions_kernel (Epick):
+//   - exact predicates via interval arithmetic (no GMP needed at runtime)
+//   - double-precision constructions
+// Returns cdt.number_of_faces() which counts all finite triangles including
+// those in the convex hull, consistent with artem-ogre/CDT's count.
+// Built via cmake using a system-installed CGAL (apt/brew/vcpkg).
+// ---------------------------------------------------------------------------
+internal static partial class CgalAdapter
+{
+    private const string Lib = "cgal_wrapper";
+
+    [LibraryImport(Lib, EntryPoint = "cgal_cdt")]
+    private static partial int CgalTriangulate(
+        double[] xs, double[] ys, int nVerts,
+        int[] ev1, int[] ev2, int nEdges);
+
+    public static int VerticesOnly(double[] xs, double[] ys) =>
+        CgalTriangulate(xs, ys, xs.Length, [], [], 0);
+
+    public static int Constrained(double[] xs, double[] ys, int[] ev1, int[] ev2) =>
+        CgalTriangulate(xs, ys, xs.Length, ev1, ev2, ev1.Length);
+}
+
+
 // (~2 600 vertices, ~2 600 constraint edges)
 // ---------------------------------------------------------------------------
 [MemoryDiagnoser]
@@ -294,13 +266,13 @@ public class ComparisonBenchmarks
     [BenchmarkCategory("VerticesOnly")]
     public int VO_Nts() => NtsAdapter.VerticesOnly(_xs, _ys);
 
-    [Benchmark(Description = "Poly2Tri")]
-    [BenchmarkCategory("VerticesOnly")]
-    public int VO_Poly2Tri() => Poly2TriAdapter.VerticesOnly(_xs, _ys);
-
     [Benchmark(Description = "artem-ogre/CDT (C++)")]
     [BenchmarkCategory("VerticesOnly")]
     public int VO_NativeCdt() => NativeCdtAdapter.VerticesOnly(_xs, _ys);
+
+    [Benchmark(Description = "CGAL (C++)")]
+    [BenchmarkCategory("VerticesOnly")]
+    public int VO_Cgal() => CgalAdapter.VerticesOnly(_xs, _ys);
 
     [Benchmark(Description = "Spade (Rust)")]
     [BenchmarkCategory("VerticesOnly")]
@@ -320,13 +292,13 @@ public class ComparisonBenchmarks
     [BenchmarkCategory("Constrained")]
     public int CDT_Nts() => NtsAdapter.Conforming(_xs, _ys, _ev1, _ev2);
 
-    [Benchmark(Description = "Poly2Tri")]
-    [BenchmarkCategory("Constrained")]
-    public int CDT_Poly2Tri() => Poly2TriAdapter.Constrained(_xs, _ys, _ev1, _ev2);
-
     [Benchmark(Description = "artem-ogre/CDT (C++)")]
     [BenchmarkCategory("Constrained")]
     public int CDT_NativeCdt() => NativeCdtAdapter.Constrained(_xs, _ys, _ev1, _ev2);
+
+    [Benchmark(Description = "CGAL (C++)")]
+    [BenchmarkCategory("Constrained")]
+    public int CDT_Cgal() => CgalAdapter.Constrained(_xs, _ys, _ev1, _ev2);
 
     [Benchmark(Description = "Spade (Rust)")]
     [BenchmarkCategory("Constrained")]
