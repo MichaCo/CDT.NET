@@ -66,6 +66,7 @@
     <_NativeLibExt Condition="$([System.Runtime.InteropServices.RuntimeInformation]::IsOSPlatform($([System.Runtime.InteropServices.OSPlatform]::OSX)))">.dylib</_NativeLibExt>
     <_NativeLibExt Condition="'$(_NativeLibExt)' == ''">.so</_NativeLibExt>
 
+    <!-- Source-side paths (in native/*/build or target/) -->
     <_CdtLibFile>$(_CdtBuildDir)/$(_NativeLibPrefix)cdt_wrapper$(_NativeLibExt)</_CdtLibFile>
     <_CgalLibFile>$(_CgalBuildDir)/$(_NativeLibPrefix)cgal_wrapper$(_NativeLibExt)</_CgalLibFile>
     <_SpadeLibFile>$(_SpadeReleaseDir)/$(_NativeLibPrefix)spade_wrapper$(_NativeLibExt)</_SpadeLibFile>
@@ -73,7 +74,9 @@
 
   <!-- ── artem-ogre/CDT C++ wrapper ──────────────────────────────────────── -->
 
-  <!-- Friendly error when cmake is not on PATH (shared by all C++ wrappers) -->
+  <!-- Friendly error when cmake is not on PATH (shared by both C++ wrappers).
+       BeforeTargets means this is also skipped when its owning targets are
+       skipped via Condition (i.e. when the output libs already exist). -->
   <Target Name="CheckCmake" BeforeTargets="BuildCdtNative;BuildCgalNative">
     <Exec Command="cmake --version"
           IgnoreExitCode="true"
@@ -86,26 +89,37 @@
            Text="cmake was not found on PATH. It is required to build the C++ wrappers. Install CMake from https://cmake.org/download/ and ensure it is on your PATH." />
   </Target>
 
-  <Target Name="BuildCdtNative" BeforeTargets="Build" DependsOnTargets="CheckCmake">
+  <!--
+    IMPORTANT: $(OutputPath) is empty at PropertyGroup evaluation time in SDK-style
+    projects, so the output lib paths must be inlined directly in Condition attributes
+    (which are evaluated at target-execution time when $(OutputPath) is fully resolved).
+
+    Condition="!Exists('$(OutputPath)...')" means:
+      • First build (or after `dotnet clean`): output lib is missing → run cmake/cargo.
+        The BeforeTargets check targets (CheckCmake/CheckCargo) also run.
+      • Every subsequent `dotnet build`: output lib already in output dir → entire
+        target AND its BeforeTargets prerequisites are skipped — no cmake or cargo invoked.
+    The cmake/cargo build dirs (native/*/build, native/*/target) are NOT cleaned by
+    `dotnet clean`, so a rebuild after clean is fast (only re-links if needed).
+  -->
+  <Target Name="BuildCdtNative" BeforeTargets="Build"
+          Condition="!Exists('$(OutputPath)$(_NativeLibPrefix)cdt_wrapper$(_NativeLibExt)')">
     <MakeDir Directories="$(_CdtBuildDir)" />
     <Exec Command="cmake -S &quot;$(_CdtNativeDir)&quot; -B &quot;$(_CdtBuildDir)&quot; -DCMAKE_BUILD_TYPE=Release" />
     <Exec Command="cmake --build &quot;$(_CdtBuildDir)&quot; --config Release" />
     <MakeDir Directories="$(OutputPath)" />
-    <Copy SourceFiles="$(_CdtLibFile)"
-          DestinationFolder="$(OutputPath)"
-          SkipUnchangedFiles="true" />
+    <Copy SourceFiles="$(_CdtLibFile)" DestinationFolder="$(OutputPath)" SkipUnchangedFiles="true" />
   </Target>
 
   <!-- ── CGAL C++ wrapper ─────────────────────────────────────────────────── -->
 
-  <Target Name="BuildCgalNative" BeforeTargets="Build" DependsOnTargets="CheckCmake">
+  <Target Name="BuildCgalNative" BeforeTargets="Build"
+          Condition="!Exists('$(OutputPath)$(_NativeLibPrefix)cgal_wrapper$(_NativeLibExt)')">
     <MakeDir Directories="$(_CgalBuildDir)" />
     <Exec Command="cmake -S &quot;$(_CgalNativeDir)&quot; -B &quot;$(_CgalBuildDir)&quot; -DCMAKE_BUILD_TYPE=Release" />
     <Exec Command="cmake --build &quot;$(_CgalBuildDir)&quot; --config Release" />
     <MakeDir Directories="$(OutputPath)" />
-    <Copy SourceFiles="$(_CgalLibFile)"
-          DestinationFolder="$(OutputPath)"
-          SkipUnchangedFiles="true" />
+    <Copy SourceFiles="$(_CgalLibFile)" DestinationFolder="$(OutputPath)" SkipUnchangedFiles="true" />
   </Target>
 
   <!-- ── Spade Rust wrapper ───────────────────────────────────────────────── -->
@@ -123,12 +137,21 @@
            Text="cargo was not found on PATH. It is required to build the Spade Rust wrapper. Install Rust from https://rustup.rs/ and ensure cargo is on your PATH." />
   </Target>
 
-  <Target Name="BuildSpadeNative" BeforeTargets="Build" DependsOnTargets="CheckCargo">
+  <Target Name="BuildSpadeNative" BeforeTargets="Build"
+          Condition="!Exists('$(OutputPath)$(_NativeLibPrefix)spade_wrapper$(_NativeLibExt)')">
     <Exec Command="cargo build --release --manifest-path &quot;$(_SpadeNativeDir)/Cargo.toml&quot;" />
     <MakeDir Directories="$(OutputPath)" />
-    <Copy SourceFiles="$(_SpadeLibFile)"
-          DestinationFolder="$(OutputPath)"
-          SkipUnchangedFiles="true" />
+    <Copy SourceFiles="$(_SpadeLibFile)" DestinationFolder="$(OutputPath)" SkipUnchangedFiles="true" />
+  </Target>
+
+  <!-- ── Clean hook ───────────────────────────────────────────────────────── -->
+
+  <!-- Remove the native libs from the output dir when `dotnet clean` runs,
+       so the next build will re-copy (and re-compile if needed) them. -->
+  <Target Name="CleanNativeWrappers" AfterTargets="Clean">
+    <Delete Files="$(OutputPath)$(_NativeLibPrefix)cdt_wrapper$(_NativeLibExt);
+                   $(OutputPath)$(_NativeLibPrefix)cgal_wrapper$(_NativeLibExt);
+                   $(OutputPath)$(_NativeLibPrefix)spade_wrapper$(_NativeLibExt)" />
   </Target>
 
 </Project>
