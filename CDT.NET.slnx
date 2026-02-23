@@ -1,6 +1,7 @@
 <Solution>
   <Folder Name="/benchmark/">
     <Project Path="benchmark/CDT.Benchmarks/CDT.Benchmarks.csproj" />
+    <Project Path="benchmark/CDT.Comparison.Benchmarks/CDT.Comparison.Benchmarks.csproj" />
   </Folder>
   <Folder Name="/Solution Items/">
     <File Path=".editorconfig" />

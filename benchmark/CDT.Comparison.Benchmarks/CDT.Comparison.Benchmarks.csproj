@@ -8,20 +8,13 @@
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>
 
-  <!-- CDT.NET reference -->
+  <!-- CDT.NET (baseline) -->
   <ItemGroup>
     <ProjectReference Include="..\..\src\CDT.Core\CDT.Core.csproj" />
   </ItemGroup>
 
-  <!-- Competing libraries + BenchmarkDotNet -->
   <ItemGroup>
     <PackageReference Include="BenchmarkDotNet" Version="0.15.8" />
-    <!-- Triangle.NET: classic robust CDT, supports constrained edges -->
-    <PackageReference Include="Unofficial.Triangle.NET" Version="0.0.1" />
-    <!-- DelaunatorSharp: fast Delaunay (no constraint support) -->
-    <PackageReference Include="Delaunator" Version="1.0.11" />
-    <!-- Poly2Tri: sweep-line CDT, supports constrained edges -->
-    <PackageReference Include="Poly2Tri.NetStandard" Version="1.0.2" />
   </ItemGroup>
 
   <!-- Copy test input files so benchmarks can find them at runtime -->
