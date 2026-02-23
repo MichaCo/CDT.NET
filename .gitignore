@@ -51,6 +51,11 @@ _ReSharper*/
 # BenchmarkDotNet
 BenchmarkDotNet.Artifacts/
 
+# Native build artifacts
+benchmark/CDT.Comparison.Benchmarks/native/cdt_wrapper/build/
+benchmark/CDT.Comparison.Benchmarks/native/cgal_wrapper/build/
+benchmark/CDT.Comparison.Benchmarks/native/spade_wrapper/target/
+
 # OS generated files
 .DS_Store
 .DS_Store?
@@ -69,3 +74,5 @@ lcov.info
 # Temp files
 *.tmp
 *.temp
+_codeql_detected_source_root
+Program.cs
