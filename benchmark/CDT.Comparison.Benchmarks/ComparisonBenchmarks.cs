@@ -5,6 +5,9 @@
 using BenchmarkDotNet.Attributes;
 using BenchmarkDotNet.Configs;
 using CDT;
+using CdtEdge = CDT.Edge;
+using TriangleNet.Geometry;
+using TriangleNet.Meshing;
 
 // ---------------------------------------------------------------------------
 // Shared input reader
@@ -68,9 +71,9 @@ internal static class CdtNetAdapter
         for (int i = 0; i < xs.Length; i++)
             verts.Add(new V2d<double>(xs[i], ys[i]));
 
-        var edges = new List<Edge>(ev1.Length);
+        var edges = new List<CdtEdge>(ev1.Length);
         for (int i = 0; i < ev1.Length; i++)
-            edges.Add(new Edge(ev1[i], ev2[i]));
+            edges.Add(new CdtEdge(ev1[i], ev2[i]));
 
         var cdt = new Triangulation<double>(VertexInsertionOrder.Auto);
         cdt.InsertVertices(verts);
@@ -80,7 +83,37 @@ internal static class CdtNetAdapter
 }
 
 // ---------------------------------------------------------------------------
-// Benchmark class — "Constrained Sweden" dataset
+// Adapter — Triangle.NET  (Unofficial.Triangle.NET 0.0.1)
+// True CDT: segments become hard constraint edges in the mesh.
+// ---------------------------------------------------------------------------
+internal static class TriangleNetAdapter
+{
+    public static int VerticesOnly(double[] xs, double[] ys)
+    {
+        var polygon = new Polygon(xs.Length);
+        for (int i = 0; i < xs.Length; i++)
+            polygon.Add(new Vertex(xs[i], ys[i]));
+
+        return new GenericMesher().Triangulate(polygon).Triangles.Count;
+    }
+
+    public static int Constrained(double[] xs, double[] ys, int[] ev1, int[] ev2)
+    {
+        var polygon = new Polygon(xs.Length);
+        var verts = new Vertex[xs.Length];
+        for (int i = 0; i < xs.Length; i++)
+        {
+            verts[i] = new Vertex(xs[i], ys[i]);
+            polygon.Add(verts[i]);
+        }
+        for (int i = 0; i < ev1.Length; i++)
+            polygon.Add(new Segment(verts[ev1[i]], verts[ev2[i]]));
+
+        return new GenericMesher().Triangulate(polygon).Triangles.Count;
+    }
+}
+
+
 // (~2 600 vertices, ~2 600 constraint edges)
 // ---------------------------------------------------------------------------
 [MemoryDiagnoser]
@@ -104,9 +137,17 @@ public class ComparisonBenchmarks
     [BenchmarkCategory("VerticesOnly")]
     public int VO_CdtNet() => CdtNetAdapter.VerticesOnly(_xs, _ys);
 
+    [Benchmark(Description = "Triangle.NET")]
+    [BenchmarkCategory("VerticesOnly")]
+    public int VO_TriangleNet() => TriangleNetAdapter.VerticesOnly(_xs, _ys);
+
     // -- Constrained ---------------------------------------------------------
 
     [Benchmark(Baseline = true, Description = "CDT.NET")]
     [BenchmarkCategory("Constrained")]
     public int CDT_CdtNet() => CdtNetAdapter.Constrained(_xs, _ys, _ev1, _ev2);
+
+    [Benchmark(Description = "Triangle.NET")]
+    [BenchmarkCategory("Constrained")]
+    public int CDT_TriangleNet() => TriangleNetAdapter.Constrained(_xs, _ys, _ev1, _ev2);
 }

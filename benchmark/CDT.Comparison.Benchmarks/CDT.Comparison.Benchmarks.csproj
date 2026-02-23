@@ -15,6 +15,8 @@
 
   <ItemGroup>
     <PackageReference Include="BenchmarkDotNet" Version="0.15.8" />
+    <!-- Triangle.NET: classic robust CDT, supports constrained edges via Segments -->
+    <PackageReference Include="Unofficial.Triangle.NET" Version="0.0.1" />
   </ItemGroup>
 
   <!-- Copy test input files so benchmarks can find them at runtime -->
