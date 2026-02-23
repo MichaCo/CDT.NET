@@ -19,6 +19,7 @@ using TnVertex = TriangleNet.Geometry.Vertex;
 using P2tPoint = Poly2Tri.Triangulation.TriangulationPoint;
 using P2tConstraint = Poly2Tri.Triangulation.TriangulationConstraint;
 using P2tCps = Poly2Tri.Triangulation.Sets.ConstrainedPointSet;
+using System.Runtime.InteropServices;
 
 // ---------------------------------------------------------------------------
 // Shared input reader
@@ -202,6 +203,28 @@ internal static class Poly2TriAdapter
 }
 
 
+// ---------------------------------------------------------------------------
+// Adapter — artem-ogre/CDT  (C++ via P/Invoke)
+// The original C++ CDT library that CDT.NET is ported from.
+// Built from source via CMake + FetchContent; produces libcdt_wrapper.so.
+// ---------------------------------------------------------------------------
+internal static partial class NativeCdtAdapter
+{
+    private const string Lib = "cdt_wrapper";
+
+    [LibraryImport(Lib, EntryPoint = "cdt_triangulate_d")]
+    private static partial int Triangulate(
+        double[] xs, double[] ys, int nVerts,
+        int[] ev1, int[] ev2, int nEdges);
+
+    public static int VerticesOnly(double[] xs, double[] ys) =>
+        Triangulate(xs, ys, xs.Length, [], [], 0);
+
+    public static int Constrained(double[] xs, double[] ys, int[] ev1, int[] ev2) =>
+        Triangulate(xs, ys, xs.Length, ev1, ev2, ev1.Length);
+}
+
+
 // (~2 600 vertices, ~2 600 constraint edges)
 // ---------------------------------------------------------------------------
 [MemoryDiagnoser]
@@ -237,6 +260,10 @@ public class ComparisonBenchmarks
     [BenchmarkCategory("VerticesOnly")]
     public int VO_Poly2Tri() => Poly2TriAdapter.VerticesOnly(_xs, _ys);
 
+    [Benchmark(Description = "artem-ogre/CDT (C++)")]
+    [BenchmarkCategory("VerticesOnly")]
+    public int VO_NativeCdt() => NativeCdtAdapter.VerticesOnly(_xs, _ys);
+
     // -- Constrained ---------------------------------------------------------
 
     [Benchmark(Baseline = true, Description = "CDT.NET")]
@@ -254,4 +281,8 @@ public class ComparisonBenchmarks
     [Benchmark(Description = "Poly2Tri")]
     [BenchmarkCategory("Constrained")]
     public int CDT_Poly2Tri() => Poly2TriAdapter.Constrained(_xs, _ys, _ev1, _ev2);
+
+    [Benchmark(Description = "artem-ogre/CDT (C++)")]
+    [BenchmarkCategory("Constrained")]
+    public int CDT_NativeCdt() => NativeCdtAdapter.Constrained(_xs, _ys, _ev1, _ev2);
 }

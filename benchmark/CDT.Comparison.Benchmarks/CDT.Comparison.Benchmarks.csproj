@@ -30,4 +30,23 @@
              Link="inputs\%(Filename)%(Extension)" />
   </ItemGroup>
 
+  <!--
+    Build the artem-ogre/CDT C++ wrapper.
+    Requires: cmake, a C++17 compiler, and internet access (FetchContent).
+  -->
+  <PropertyGroup>
+    <_CdtNativeDir>$(MSBuildThisFileDirectory)native/cdt_wrapper</_CdtNativeDir>
+    <_CdtBuildDir>$(_CdtNativeDir)/build</_CdtBuildDir>
+  </PropertyGroup>
+
+  <Target Name="BuildCdtNative" BeforeTargets="Build">
+    <MakeDir Directories="$(_CdtBuildDir)" />
+    <Exec Command="cmake -S &quot;$(_CdtNativeDir)&quot; -B &quot;$(_CdtBuildDir)&quot; -DCMAKE_BUILD_TYPE=Release" />
+    <Exec Command="cmake --build &quot;$(_CdtBuildDir)&quot; --config Release" />
+    <MakeDir Directories="$(OutputPath)" />
+    <Copy SourceFiles="$(_CdtBuildDir)/libcdt_wrapper.so"
+          DestinationFolder="$(OutputPath)"
+          SkipUnchangedFiles="true" />
+  </Target>
+
 </Project>
