@@ -1,1 +1,0 @@
-/usr/bin/c++ -fPIC -O3 -DNDEBUG -Wl,--dependency-file=CMakeFiles/cdt_wrapper.dir/link.d -shared -Wl,-soname,libcdt_wrapper.so -o libcdt_wrapper.so CMakeFiles/cdt_wrapper.dir/cdt_wrapper.cpp.o
