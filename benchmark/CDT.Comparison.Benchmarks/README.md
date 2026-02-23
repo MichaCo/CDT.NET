@@ -25,7 +25,7 @@ The dataset used is **"Constrained Sweden"** (~2 600 vertices, ~2 600 constraint
 ## Prerequisites
 
 The C# libraries (CDT.NET, Triangle.NET, NetTopologySuite) are fetched automatically by NuGet.  
-The three **native** wrappers (artem-ogre/CDT, CGAL, Spade) are **compiled from source** as part of `dotnet build` and require additional tooling.
+The three **native** wrappers (artem-ogre/CDT, CGAL, Spade) are **compiled from source** as part of `dotnet build`. CGAL and its required Boost sub-libraries are downloaded automatically by CMake FetchContent on first build (~20 MB total, cached afterwards). No manual installation of CGAL or Boost is required.
 
 ### Linux / macOS
 
@@ -33,19 +33,18 @@ The three **native** wrappers (artem-ogre/CDT, CGAL, Spade) are **compiled from 
 |------|---------|---------|
 | `cmake` ≥ 3.20 | Builds the C++ wrappers | Package manager or https://cmake.org/download/ |
 | C++17 compiler | `gcc`/`clang` | `sudo apt install build-essential` / `xcode-select --install` |
-| **CGAL** | Headers + cmake config for the CGAL wrapper | `sudo apt install libcgal-dev` / `brew install cgal` |
 | `git` | CMake FetchContent (downloads artem-ogre/CDT) | Usually pre-installed |
 | `cargo` (Rust stable) | Builds the Rust wrapper | https://rustup.rs/ |
 
 ```bash
 # Ubuntu / Debian
-sudo apt install cmake build-essential git libcgal-dev
+sudo apt install cmake build-essential git
 curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 ```
 
 ```bash
 # macOS
-brew install cmake cgal
+brew install cmake
 curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 ```
 
@@ -55,21 +54,13 @@ curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 |------|---------|---------|
 | **Visual Studio 2022** (or Build Tools) with the **"Desktop development with C++"** workload | C++17 compiler (MSVC) | https://visualstudio.microsoft.com/downloads/ |
 | **CMake** ≥ 3.20 | Builds the C++ wrappers | Bundled with VS 2022, or https://cmake.org/download/ (tick "Add to PATH") |
-| **CGAL** | Headers + cmake config for the CGAL wrapper | `winget install CGAL.CGAL` or `vcpkg install cgal` |
-| **Git for Windows** | CMake FetchContent | https://git-scm.com/download/win |
+| **Git for Windows** | CMake FetchContent (downloads artem-ogre/CDT, CGAL, Boost sub-libs) | https://git-scm.com/download/win |
 | **Rust** (stable, MSVC ABI) | Builds the Rust wrapper | https://rustup.rs/ → choose `x86_64-pc-windows-msvc` |
 
 > **Tip:** Install Visual Studio first, then Rust. The Rust installer auto-detects the MSVC linker.  
 > Open a **Developer Command Prompt for VS 2022** (or a normal terminal after running `vcvarsall.bat`) so that `cmake`, `cl`, and `cargo` are all on your PATH.
 >
-> For CGAL on Windows the easiest path is **vcpkg**:
-> ```powershell
-> git clone https://github.com/microsoft/vcpkg
-> .\vcpkg\bootstrap-vcpkg.bat
-> .\vcpkg\vcpkg install cgal:x64-windows
-> # Then pass -DCMAKE_TOOLCHAIN_FILE=<path_to_vcpkg>/scripts/buildsystems/vcpkg.cmake to cmake,
-> # or set VCPKG_ROOT environment variable (picked up automatically by CMake 3.25+).
-> ```
+> CGAL and Boost are downloaded automatically by CMake — no manual install required.
 
 If any of these tools are missing, `dotnet build` will print a clear error message pointing to the missing tool before failing.
 
@@ -94,7 +85,7 @@ Results are written to `BenchmarkDotNet.Artifacts/` in the current directory.
 |---------|-----------|
 | NetTopologySuite | Uses *conforming* CDT — Steiner points may be inserted, so the triangle count and layout differ from true CDT results |
 | artem-ogre/CDT (C++) | Triangle count includes all convex-hull triangles (same behaviour as CDT.NET before `EraseSuperTriangle`) |
-| CGAL (C++) | `number_of_faces()` counts all finite triangles in the triangulation, consistent with artem-ogre/CDT |
+| CGAL (C++) | `number_of_faces()` counts all finite triangles in the triangulation, consistent with artem-ogre/CDT. First build downloads CGAL 6.1.1 library headers (~10 MB) and the required Boost sub-library headers (~10 MB ZIPs, ~60 MB staged); subsequent builds use the cmake cache. |
 | Spade (Rust) | `num_inner_faces()` returns only inner (non-convex-hull) triangles, which is fewer than the C++ CDT counts |
 
 ## Benchmark results

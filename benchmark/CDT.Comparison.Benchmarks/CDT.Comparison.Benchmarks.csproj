@@ -8,6 +8,14 @@
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>
 
+  <!-- Exclude native/ from all MSBuild default SDK globs.
+       Without this, .resx files inside Boost's downloaded sources
+       (e.g., boost_math .NET examples) get picked up as EmbeddedResource
+       items and cause MSB3822 build errors. -->
+  <PropertyGroup>
+    <DefaultItemExcludes>$(DefaultItemExcludes);native\**</DefaultItemExcludes>
+  </PropertyGroup>
+
   <!-- CDT.NET (baseline) -->
   <ItemGroup>
     <ProjectReference Include="..\..\src\CDT.Core\CDT.Core.csproj" />
