@@ -38,10 +38,15 @@ jobs:
             8.0.x
             10.0.x
 
-      # Windows: restore full solution (includes Windows-only CDT.Viz)
+      # Windows: restore cross-platform + Windows-only projects (CDT.Viz targets Windows only)
+      # CDT.Comparison.Benchmarks is excluded: its native cmake/cargo build is too slow for CI
       - name: Restore dependencies
         if: runner.os == 'Windows'
-        run: dotnet restore
+        run: |
+          dotnet restore src/CDT.Core/CDT.Core.csproj
+          dotnet restore test/CDT.Tests/CDT.Tests.csproj
+          dotnet restore benchmark/CDT.Benchmarks/CDT.Benchmarks.csproj
+          dotnet restore viz/CDT.Viz/CDT.Viz.csproj
 
       # Linux: restore only cross-platform projects (CDT.Viz targets Windows only)
       - name: Restore dependencies
@@ -50,10 +55,15 @@ jobs:
           dotnet restore src/CDT.Core/CDT.Core.csproj
           dotnet restore test/CDT.Tests/CDT.Tests.csproj
 
-      # Windows: build full solution
+      # Windows: build cross-platform + Windows-only projects
+      # CDT.Comparison.Benchmarks is excluded: its native cmake/cargo build is too slow for CI
       - name: Build
         if: runner.os == 'Windows'
-        run: dotnet build --no-restore -c Release
+        run: |
+          dotnet build --no-restore -c Release src/CDT.Core/CDT.Core.csproj
+          dotnet build --no-restore -c Release test/CDT.Tests/CDT.Tests.csproj
+          dotnet build --no-restore -c Release benchmark/CDT.Benchmarks/CDT.Benchmarks.csproj
+          dotnet build --no-restore -c Release viz/CDT.Viz/CDT.Viz.csproj
 
       # Linux: build only cross-platform projects
       - name: Build
@@ -62,10 +72,10 @@ jobs:
           dotnet build --no-restore -c Release src/CDT.Core/CDT.Core.csproj
           dotnet build --no-restore -c Release test/CDT.Tests/CDT.Tests.csproj
 
-      # Windows: test full solution
+      # Windows: test CDT.Tests only (CDT.Comparison.Benchmarks excluded from CI build)
       - name: Test
         if: runner.os == 'Windows'
-        run: dotnet test --no-build -c Release --verbosity normal /p:CollectCoverage=true /p:CoverletOutputFormat=cobertura /p:CoverletOutput=${{ github.workspace }}/coverage/coverage.cobertura.xml
+        run: dotnet test --no-build -c Release --verbosity normal /p:CollectCoverage=true /p:CoverletOutputFormat=cobertura /p:CoverletOutput=${{ github.workspace }}/coverage/coverage.cobertura.xml test/CDT.Tests/CDT.Tests.csproj
 
       # Linux: test only CDT.Tests (CDT.Viz has no tests; benchmark is not a test project)
       - name: Test
@@ -110,11 +120,12 @@ jobs:
         with:
           fetch-depth: 0  # Required for SourceLink
 
+      # Only CDT.Core is needed for pack; CDT.Comparison.Benchmarks is excluded
       - name: Restore dependencies
-        run: dotnet restore
+        run: dotnet restore src/CDT.Core/CDT.Core.csproj
 
       - name: Build
-        run: dotnet build --no-restore -c Release
+        run: dotnet build --no-restore -c Release src/CDT.Core/CDT.Core.csproj
 
       - name: Pack
         shell: pwsh
