@@ -73,3 +73,4 @@ lcov.info
 # Temp files
 *.tmp
 *.temp
+_codeql_detected_source_root
