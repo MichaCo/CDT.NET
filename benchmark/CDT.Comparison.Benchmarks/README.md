@@ -24,14 +24,37 @@ The dataset used is **"Constrained Sweden"** (~2 600 vertices, ~2 600 constraint
 
 ## Prerequisites
 
-### Native libraries (artem-ogre/CDT and Spade)
+The C# libraries (CDT.NET, Triangle.NET, NetTopologySuite, Poly2Tri) are fetched automatically by NuGet.  
+The two **native** wrappers (artem-ogre/CDT and Spade) are **compiled from source** as part of `dotnet build` and require additional tooling.
 
-The two native wrappers are built automatically when you run `dotnet build`. You need:
+### Linux / macOS
 
-- **C++ wrapper** — `cmake` ≥ 3.20, a C++17 compiler (gcc/clang/MSVC), and internet access (CMake FetchContent downloads artem-ogre/CDT from GitHub)
-- **Rust wrapper** — `cargo` (Rust stable toolchain), internet access to crates.io
+| Tool | Purpose | Install |
+|------|---------|---------|
+| `cmake` ≥ 3.20 | Builds the C++ wrapper | Package manager or https://cmake.org/download/ |
+| C++17 compiler | `gcc`/`clang` | `sudo apt install build-essential` / `xcode-select --install` |
+| `git` | CMake FetchContent (downloads artem-ogre/CDT) | Usually pre-installed |
+| `cargo` (Rust stable) | Builds the Rust wrapper | https://rustup.rs/ |
 
-On Linux/macOS the wrappers produce `libcdt_wrapper.so` / `libspade_wrapper.so`; on Windows they would need `cdt_wrapper.dll` / `spade_wrapper.dll` (not yet configured).
+```bash
+# Ubuntu / Debian
+sudo apt install cmake build-essential git
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+```
+
+### Windows
+
+| Tool | Purpose | Install |
+|------|---------|---------|
+| **Visual Studio 2022** (or Build Tools) with the **"Desktop development with C++"** workload | C++17 compiler (MSVC) | https://visualstudio.microsoft.com/downloads/ |
+| **CMake** ≥ 3.20 | Builds the C++ wrapper | Bundled with VS 2022, or https://cmake.org/download/ (tick "Add to PATH") |
+| **Git for Windows** | CMake FetchContent | https://git-scm.com/download/win |
+| **Rust** (stable, MSVC ABI) | Builds the Rust wrapper | https://rustup.rs/ → choose `x86_64-pc-windows-msvc` |
+
+> **Tip:** Install Visual Studio first, then Rust. The Rust installer auto-detects the MSVC linker.  
+> Open a **Developer Command Prompt for VS 2022** (or a normal terminal after running `vcvarsall.bat`) so that `cmake`, `cl`, and `cargo` are all on your PATH.
+
+If any of these tools are missing, `dotnet build` will print a clear error message pointing to the missing tool before failing.
 
 ## Running the benchmarks
 
@@ -55,7 +78,6 @@ Results are written to `BenchmarkDotNet.Artifacts/` in the current directory.
 | NetTopologySuite | Uses *conforming* CDT — Steiner points may be inserted, so the triangle count and layout differ from true CDT results |
 | artem-ogre/CDT (C++) | Triangle count includes the three super-triangle triangles (same behaviour as CDT.NET before `EraseSuperTriangle`) |
 | Spade (Rust) | `num_inner_faces()` returns only finite (inner) triangles, which is fewer than the C++ CDT count |
-| Native wrappers | Linux only in the current configuration; Windows support requires separate `.dll` build scripts |
 | Poly2Tri (Constrained) | Throws an internal exception on the Sweden CDT dataset; constrained benchmark shows `NA` |
 
 ## Benchmark results

@@ -31,34 +31,81 @@
   </ItemGroup>
 
   <!--
-    Build the artem-ogre/CDT C++ wrapper.
-    Requires: cmake, a C++17 compiler, and internet access (FetchContent).
+    ═══════════════════════════════════════════════════════════════════════════
+    Native wrapper configuration  (artem-ogre/CDT C++ and Spade Rust)
+
+    Requirements
+      C++ wrapper : cmake ≥ 3.20, a C++17 compiler, internet access (FetchContent)
+      Rust wrapper: cargo / rustup, internet access (crates.io)
+
+    Output filename conventions (all end up in $(OutputPath)):
+      Windows : cdt_wrapper.dll      / spade_wrapper.dll
+      macOS   : libcdt_wrapper.dylib / libspade_wrapper.dylib
+      Linux   : libcdt_wrapper.so    / libspade_wrapper.so
+    ═══════════════════════════════════════════════════════════════════════════
   -->
   <PropertyGroup>
     <_CdtNativeDir>$(MSBuildThisFileDirectory)native/cdt_wrapper</_CdtNativeDir>
     <_CdtBuildDir>$(_CdtNativeDir)/build</_CdtBuildDir>
     <_SpadeNativeDir>$(MSBuildThisFileDirectory)native/spade_wrapper</_SpadeNativeDir>
     <_SpadeReleaseDir>$(_SpadeNativeDir)/target/release</_SpadeReleaseDir>
+
+    <!-- lib prefix: empty on Windows, "lib" everywhere else -->
+    <_NativeLibPrefix Condition="'$(OS)' != 'Windows_NT'">lib</_NativeLibPrefix>
+
+    <!-- extension: .dll on Windows, .dylib on macOS, .so on Linux -->
+    <_NativeLibExt Condition="'$(OS)' == 'Windows_NT'">.dll</_NativeLibExt>
+    <_NativeLibExt Condition="$([System.Runtime.InteropServices.RuntimeInformation]::IsOSPlatform($([System.Runtime.InteropServices.OSPlatform]::OSX)))">.dylib</_NativeLibExt>
+    <_NativeLibExt Condition="'$(_NativeLibExt)' == ''">.so</_NativeLibExt>
+
+    <_CdtLibFile>$(_CdtBuildDir)/$(_NativeLibPrefix)cdt_wrapper$(_NativeLibExt)</_CdtLibFile>
+    <_SpadeLibFile>$(_SpadeReleaseDir)/$(_NativeLibPrefix)spade_wrapper$(_NativeLibExt)</_SpadeLibFile>
   </PropertyGroup>
 
-  <Target Name="BuildCdtNative" BeforeTargets="Build">
+  <!-- ── artem-ogre/CDT C++ wrapper ──────────────────────────────────────── -->
+
+  <!-- Friendly error when cmake is not on PATH -->
+  <Target Name="CheckCmake" BeforeTargets="BuildCdtNative">
+    <Exec Command="cmake --version"
+          IgnoreExitCode="true"
+          ConsoleToMSBuild="true"
+          StandardOutputImportance="Low"
+          StandardErrorImportance="Low">
+      <Output TaskParameter="ExitCode" PropertyName="_CmakeExitCode" />
+    </Exec>
+    <Error Condition="'$(_CmakeExitCode)' != '0'"
+           Text="cmake was not found on PATH. It is required to build the artem-ogre/CDT C++ wrapper. Install CMake from https://cmake.org/download/ and ensure it is on your PATH." />
+  </Target>
+
+  <Target Name="BuildCdtNative" BeforeTargets="Build" DependsOnTargets="CheckCmake">
     <MakeDir Directories="$(_CdtBuildDir)" />
     <Exec Command="cmake -S &quot;$(_CdtNativeDir)&quot; -B &quot;$(_CdtBuildDir)&quot; -DCMAKE_BUILD_TYPE=Release" />
     <Exec Command="cmake --build &quot;$(_CdtBuildDir)&quot; --config Release" />
     <MakeDir Directories="$(OutputPath)" />
-    <Copy SourceFiles="$(_CdtBuildDir)/libcdt_wrapper.so"
+    <Copy SourceFiles="$(_CdtLibFile)"
           DestinationFolder="$(OutputPath)"
           SkipUnchangedFiles="true" />
   </Target>
 
-  <!--
-    Build the Spade Rust wrapper.
-    Requires: cargo (Rust toolchain).
-  -->
-  <Target Name="BuildSpadeNative" BeforeTargets="Build">
+  <!-- ── Spade Rust wrapper ───────────────────────────────────────────────── -->
+
+  <!-- Friendly error when cargo is not on PATH -->
+  <Target Name="CheckCargo" BeforeTargets="BuildSpadeNative">
+    <Exec Command="cargo --version"
+          IgnoreExitCode="true"
+          ConsoleToMSBuild="true"
+          StandardOutputImportance="Low"
+          StandardErrorImportance="Low">
+      <Output TaskParameter="ExitCode" PropertyName="_CargoExitCode" />
+    </Exec>
+    <Error Condition="'$(_CargoExitCode)' != '0'"
+           Text="cargo was not found on PATH. It is required to build the Spade Rust wrapper. Install Rust from https://rustup.rs/ and ensure cargo is on your PATH." />
+  </Target>
+
+  <Target Name="BuildSpadeNative" BeforeTargets="Build" DependsOnTargets="CheckCargo">
     <Exec Command="cargo build --release --manifest-path &quot;$(_SpadeNativeDir)/Cargo.toml&quot;" />
     <MakeDir Directories="$(OutputPath)" />
-    <Copy SourceFiles="$(_SpadeReleaseDir)/libspade_wrapper.so"
+    <Copy SourceFiles="$(_SpadeLibFile)"
           DestinationFolder="$(OutputPath)"
           SkipUnchangedFiles="true" />
   </Target>
