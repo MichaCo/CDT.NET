@@ -6,8 +6,16 @@ using BenchmarkDotNet.Attributes;
 using BenchmarkDotNet.Configs;
 using CDT;
 using CdtEdge = CDT.Edge;
-using TriangleNet.Geometry;
-using TriangleNet.Meshing;
+using NtsCoordinate = NetTopologySuite.Geometries.Coordinate;
+using NtsGeometryFactory = NetTopologySuite.Geometries.GeometryFactory;
+using NtsLineString = NetTopologySuite.Geometries.LineString;
+using NtsMultiLineString = NetTopologySuite.Geometries.MultiLineString;
+using NtsMultiPoint = NetTopologySuite.Geometries.MultiPoint;
+using NtsPoint = NetTopologySuite.Geometries.Point;
+using TnMesher = TriangleNet.Meshing.GenericMesher;
+using TnPolygon = TriangleNet.Geometry.Polygon;
+using TnSegment = TriangleNet.Geometry.Segment;
+using TnVertex = TriangleNet.Geometry.Vertex;
 
 // ---------------------------------------------------------------------------
 // Shared input reader
@@ -90,26 +98,68 @@ internal static class TriangleNetAdapter
 {
     public static int VerticesOnly(double[] xs, double[] ys)
     {
-        var polygon = new Polygon(xs.Length);
+        var polygon = new TnPolygon(xs.Length);
         for (int i = 0; i < xs.Length; i++)
-            polygon.Add(new Vertex(xs[i], ys[i]));
+            polygon.Add(new TnVertex(xs[i], ys[i]));
 
-        return new GenericMesher().Triangulate(polygon).Triangles.Count;
+        return new TnMesher().Triangulate(polygon).Triangles.Count;
     }
 
     public static int Constrained(double[] xs, double[] ys, int[] ev1, int[] ev2)
     {
-        var polygon = new Polygon(xs.Length);
-        var verts = new Vertex[xs.Length];
+        var polygon = new TnPolygon(xs.Length);
+        var verts = new TnVertex[xs.Length];
         for (int i = 0; i < xs.Length; i++)
         {
-            verts[i] = new Vertex(xs[i], ys[i]);
+            verts[i] = new TnVertex(xs[i], ys[i]);
             polygon.Add(verts[i]);
         }
         for (int i = 0; i < ev1.Length; i++)
-            polygon.Add(new Segment(verts[ev1[i]], verts[ev2[i]]));
+            polygon.Add(new TnSegment(verts[ev1[i]], verts[ev2[i]]));
 
-        return new GenericMesher().Triangulate(polygon).Triangles.Count;
+        return new TnMesher().Triangulate(polygon).Triangles.Count;
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Adapter — NetTopologySuite  (2.6.0)
+// Conforming CDT: constraint edges are honoured but Steiner points may be
+// inserted to satisfy the Delaunay criterion (results differ from true CDT).
+// VerticesOnly uses the plain DelaunayTriangulationBuilder.
+// ---------------------------------------------------------------------------
+internal static class NtsAdapter
+{
+    private static readonly NtsGeometryFactory Gf = new();
+
+    public static int VerticesOnly(double[] xs, double[] ys)
+    {
+        var coords = new NtsCoordinate[xs.Length];
+        for (int i = 0; i < xs.Length; i++)
+            coords[i] = new NtsCoordinate(xs[i], ys[i]);
+
+        var builder = new NetTopologySuite.Triangulate.DelaunayTriangulationBuilder();
+        builder.SetSites(coords);
+        return builder.GetTriangles(Gf).NumGeometries;
+    }
+
+    public static int Conforming(double[] xs, double[] ys, int[] ev1, int[] ev2)
+    {
+        var pts = new NtsPoint[xs.Length];
+        for (int i = 0; i < xs.Length; i++)
+            pts[i] = Gf.CreatePoint(new NtsCoordinate(xs[i], ys[i]));
+
+        var segments = new NtsLineString[ev1.Length];
+        for (int i = 0; i < ev1.Length; i++)
+            segments[i] = Gf.CreateLineString(new[]
+            {
+                new NtsCoordinate(xs[ev1[i]], ys[ev1[i]]),
+                new NtsCoordinate(xs[ev2[i]], ys[ev2[i]]),
+            });
+
+        var builder = new NetTopologySuite.Triangulate.ConformingDelaunayTriangulationBuilder();
+        builder.SetSites(new NtsMultiPoint(pts));
+        builder.Constraints = new NtsMultiLineString(segments);
+        return builder.GetTriangles(Gf).NumGeometries;
     }
 }
 
@@ -141,6 +191,10 @@ public class ComparisonBenchmarks
     [BenchmarkCategory("VerticesOnly")]
     public int VO_TriangleNet() => TriangleNetAdapter.VerticesOnly(_xs, _ys);
 
+    [Benchmark(Description = "NTS")]
+    [BenchmarkCategory("VerticesOnly")]
+    public int VO_Nts() => NtsAdapter.VerticesOnly(_xs, _ys);
+
     // -- Constrained ---------------------------------------------------------
 
     [Benchmark(Baseline = true, Description = "CDT.NET")]
@@ -150,4 +204,8 @@ public class ComparisonBenchmarks
     [Benchmark(Description = "Triangle.NET")]
     [BenchmarkCategory("Constrained")]
     public int CDT_TriangleNet() => TriangleNetAdapter.Constrained(_xs, _ys, _ev1, _ev2);
+
+    [Benchmark(Description = "NTS (Conforming CDT)")]
+    [BenchmarkCategory("Constrained")]
+    public int CDT_Nts() => NtsAdapter.Conforming(_xs, _ys, _ev1, _ev2);
 }

@@ -17,6 +17,8 @@
     <PackageReference Include="BenchmarkDotNet" Version="0.15.8" />
     <!-- Triangle.NET: classic robust CDT, supports constrained edges via Segments -->
     <PackageReference Include="Unofficial.Triangle.NET" Version="0.0.1" />
+    <!-- NetTopologySuite: conforming CDT (may insert Steiner points) -->
+    <PackageReference Include="NetTopologySuite" Version="2.6.0" />
   </ItemGroup>
 
   <!-- Copy test input files so benchmarks can find them at runtime -->
