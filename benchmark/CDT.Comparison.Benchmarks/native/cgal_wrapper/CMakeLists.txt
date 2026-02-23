@@ -44,8 +44,8 @@ set(_BOOST_TAG "boost-1.87.0")
 # Complete list of Boost sub-libraries required by CGAL 6.1.1 CDT (Epick):
 set(_BOOST_LIBS
     algorithm any assert concept_check config container container_hash
-    core describe exception foreach functional fusion integer intrusive io
-    iterator lexical_cast math move mp11 mpl multiprecision
+    core describe detail exception foreach functional fusion integer
+    intrusive io iterator lexical_cast math move mp11 mpl multiprecision
     numeric_conversion optional predef preprocessor property_map random
     range smart_ptr static_assert throw_exception tuple type_index
     type_traits utility
