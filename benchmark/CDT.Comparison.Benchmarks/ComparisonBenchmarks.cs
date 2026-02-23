@@ -16,6 +16,9 @@ using TnMesher = TriangleNet.Meshing.GenericMesher;
 using TnPolygon = TriangleNet.Geometry.Polygon;
 using TnSegment = TriangleNet.Geometry.Segment;
 using TnVertex = TriangleNet.Geometry.Vertex;
+using P2tPoint = Poly2Tri.Triangulation.TriangulationPoint;
+using P2tConstraint = Poly2Tri.Triangulation.TriangulationConstraint;
+using P2tCps = Poly2Tri.Triangulation.Sets.ConstrainedPointSet;
 
 // ---------------------------------------------------------------------------
 // Shared input reader
@@ -162,6 +165,41 @@ internal static class NtsAdapter
         return builder.GetTriangles(Gf).NumGeometries;
     }
 }
+// ---------------------------------------------------------------------------
+// Adapter — Poly2Tri.NetStandard  (1.0.2)
+// Sweep-line CDT.  Constraints are passed as TriangulationConstraint objects
+// referencing the same TriangulationPoint instances used as input vertices.
+// ---------------------------------------------------------------------------
+internal static class Poly2TriAdapter
+{
+    public static int VerticesOnly(double[] xs, double[] ys)
+    {
+        var pts = new List<P2tPoint>(xs.Length);
+        for (int i = 0; i < xs.Length; i++)
+            pts.Add(new P2tPoint(xs[i], ys[i], 0));
+
+        var cps = new P2tCps(pts);
+        Poly2Tri.P2T.Triangulate(cps, Poly2Tri.Triangulation.TriangulationAlgorithm.DTSweep);
+        return cps.Triangles.Count;
+    }
+
+    public static int Constrained(double[] xs, double[] ys, int[] ev1, int[] ev2)
+    {
+        var pts = new List<P2tPoint>(xs.Length);
+        for (int i = 0; i < xs.Length; i++)
+            pts.Add(new P2tPoint(xs[i], ys[i], 0));
+
+        // TriangulationConstraint requires the *same* TriangulationPoint
+        // instances that are in the points list.
+        var constraints = new List<P2tConstraint>(ev1.Length);
+        for (int i = 0; i < ev1.Length; i++)
+            constraints.Add(new P2tConstraint(pts[ev1[i]], pts[ev2[i]]));
+
+        var cps = new P2tCps(pts, constraints);
+        Poly2Tri.P2T.Triangulate(cps, Poly2Tri.Triangulation.TriangulationAlgorithm.DTSweep);
+        return cps.Triangles.Count;
+    }
+}
 
 
 // (~2 600 vertices, ~2 600 constraint edges)
@@ -195,6 +233,10 @@ public class ComparisonBenchmarks
     [BenchmarkCategory("VerticesOnly")]
     public int VO_Nts() => NtsAdapter.VerticesOnly(_xs, _ys);
 
+    [Benchmark(Description = "Poly2Tri")]
+    [BenchmarkCategory("VerticesOnly")]
+    public int VO_Poly2Tri() => Poly2TriAdapter.VerticesOnly(_xs, _ys);
+
     // -- Constrained ---------------------------------------------------------
 
     [Benchmark(Baseline = true, Description = "CDT.NET")]
@@ -208,4 +250,8 @@ public class ComparisonBenchmarks
     [Benchmark(Description = "NTS (Conforming CDT)")]
     [BenchmarkCategory("Constrained")]
     public int CDT_Nts() => NtsAdapter.Conforming(_xs, _ys, _ev1, _ev2);
+
+    [Benchmark(Description = "Poly2Tri")]
+    [BenchmarkCategory("Constrained")]
+    public int CDT_Poly2Tri() => Poly2TriAdapter.Constrained(_xs, _ys, _ev1, _ev2);
 }

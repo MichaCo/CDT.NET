@@ -19,6 +19,8 @@
     <PackageReference Include="Unofficial.Triangle.NET" Version="0.0.1" />
     <!-- NetTopologySuite: conforming CDT (may insert Steiner points) -->
     <PackageReference Include="NetTopologySuite" Version="2.6.0" />
+    <!-- Poly2Tri: sweep-line CDT, supports constrained edges -->
+    <PackageReference Include="Poly2Tri.NetStandard" Version="1.0.2" />
   </ItemGroup>
 
   <!-- Copy test input files so benchmarks can find them at runtime -->
