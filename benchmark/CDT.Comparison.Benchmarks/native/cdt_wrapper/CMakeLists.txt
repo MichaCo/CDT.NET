@@ -8,7 +8,7 @@ include(FetchContent)
 FetchContent_Declare(
     CDT_Upstream
     GIT_REPOSITORY https://github.com/artem-ogre/CDT.git
-    GIT_TAG        master
+    GIT_TAG        1.4.4
     GIT_SHALLOW    TRUE
     SOURCE_SUBDIR  CDT
 )
