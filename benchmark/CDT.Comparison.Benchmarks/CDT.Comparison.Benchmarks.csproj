@@ -13,7 +13,7 @@
        (e.g., boost_math .NET examples) get picked up as EmbeddedResource
        items and cause MSB3822 build errors. -->
   <PropertyGroup>
-    <DefaultItemExcludes>$(DefaultItemExcludes);native\**</DefaultItemExcludes>
+    <DefaultItemExcludes>$(DefaultItemExcludes);native\**\*.res;native\**\build\**;native\**\target\**</DefaultItemExcludes>
   </PropertyGroup>
 
   <!-- CDT.NET (baseline) -->

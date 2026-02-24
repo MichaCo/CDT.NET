@@ -88,30 +88,57 @@ Results are written to `BenchmarkDotNet.Artifacts/` in the current directory.
 | CGAL (C++) | `number_of_faces()` counts all finite triangles in the triangulation, consistent with artem-ogre/CDT. First build downloads CGAL 6.1.1 library headers (~10 MB) and the required Boost sub-library headers (~10 MB ZIPs, ~60 MB staged); subsequent builds use the cmake cache. |
 | Spade (Rust) | `num_inner_faces()` returns only inner (non-convex-hull) triangles, which is fewer than the C++ CDT counts |
 
+## Counts of triangles by library and category
+
+```
+Constrained Delaunay Triangulation
+--------------------------------------
+  CDT.NET                  5.239 triangles
+  artem-ogre/CDT (C++)     5.239 triangles
+  Spade (Rust)             5.204 triangles
+  CGAL (C++)               5.204 triangles
+  Triangle.NET             5.204 triangles
+--------------------------------------
+Conforming Delaunay Triangulation
+--------------------------------------
+  CDT.NET                  5.343 triangles
+  artem-ogre/CDT (C++)     5.343 triangles
+  Spade (Rust)             5.308 triangles
+  CGAL (C++)               5.324 triangles
+  NTS                      5.764 triangles
+  Triangle.NET             5.204 triangles
+--------------------------------------
+```
+
 ## Benchmark results
 
 > 12th Gen Intel Core i7-12700KF 3.60GHz, 1 CPU, 20 logical and 12 physical cores
 
-| Method                 | Categories   | Mean      | Error     | StdDev    | Ratio | RatioSD |
-|----------------------- |------------- |----------:|----------:|----------:|------:|--------:|
-| **CDT.NET**            | Constrained  |  1.198 ms | 0.1065 ms | 0.0058 ms |  1.00 |    0.01 |
-| Triangle.NET           | Constrained  |  4.571 ms | 2.2827 ms | 0.1251 ms |  3.82 |    0.09 |
-| 'NTS (Conforming CDT)' | Constrained  | 37.066 ms | 8.5571 ms | 0.4690 ms | 30.95 |    0.36 |
-| 'artem-ogre/CDT (C++)' | Constrained  |  1.788 ms | 0.1284 ms | 0.0070 ms |  1.49 |    0.01 |
-| 'CGAL (C++)'           | Constrained  |  2.538 ms | 0.0574 ms | 0.0031 ms |  2.12 |    0.01 |
-| 'Spade (Rust)'         | Constrained  |  1.255 ms | 0.1050 ms | 0.0058 ms |  1.05 |    0.01 |
-|                        |              |           |           |           |       |         |
-| **CDT.NET**            | VerticesOnly |  1.048 ms | 0.0371 ms | 0.0020 ms |  1.00 |    0.00 |
-| Triangle.NET           | VerticesOnly |  1.323 ms | 0.1856 ms | 0.0102 ms |  1.26 |    0.01 |
-| NTS                    | VerticesOnly |  5.519 ms | 2.8885 ms | 0.1583 ms |  5.26 |    0.13 |
-| 'CGAL (C++)'           | VerticesOnly |  2.063 ms | 0.2154 ms | 0.0118 ms |  1.97 |    0.01 |
-| 'artem-ogre/CDT (C++)' | VerticesOnly |  1.557 ms | 0.1013 ms | 0.0056 ms |  1.49 |    0.01 |
-| 'Spade (Rust)'         | VerticesOnly |  1.028 ms | 0.0803 ms | 0.0044 ms |  0.98 |    0.00 |
-
+| Method                 | Categories   | Mean      | Error      | StdDev    | Ratio |
+|----------------------- |------------- |----------:|-----------:|----------:|------:|
+| CDT.NET                | Conforming   |  1.442 ms |  0.1628 ms | 0.0089 ms |  1.00 |
+| 'artem-ogre/CDT (C++)' | Conforming   |  1.976 ms |  0.0501 ms | 0.0027 ms |  1.37 |
+| 'Spade (Rust)'         | Conforming   |  1.341 ms |  0.2933 ms | 0.0161 ms |  0.93 |
+| 'CGAL (C++)'           | Conforming   |  4.110 ms |  0.3934 ms | 0.0216 ms |  2.85 |
+| NTS                    | Conforming   | 38.288 ms | 39.8335 ms | 2.1834 ms | 26.55 |
+| Triangle.NET           | Conforming   |  3.284 ms |  0.6901 ms | 0.0378 ms |  2.28 |
+|                        |              |           |            |           |       |
+| CDT.NET                | Constrained  |  1.167 ms |  0.0737 ms | 0.0040 ms |  1.00 |
+| 'artem-ogre/CDT (C++)' | Constrained  |  1.766 ms |  0.0619 ms | 0.0034 ms |  1.51 |
+| 'Spade (Rust)'         | Constrained  |  1.256 ms |  0.1233 ms | 0.0068 ms |  1.08 |
+| 'CGAL (C++)'           | Constrained  |  2.613 ms |  0.3773 ms | 0.0207 ms |  2.24 |
+| Triangle.NET           | Constrained  |  3.290 ms |  1.3341 ms | 0.0731 ms |  2.82 |
+|                        |              |           |            |           |       |
+| CDT.NET                | VerticesOnly |  1.072 ms |  0.0045 ms | 0.0002 ms |  1.00 |
+| 'artem-ogre/CDT (C++)' | VerticesOnly |  1.568 ms |  0.2550 ms | 0.0140 ms |  1.46 |
+| 'Spade (Rust)'         | VerticesOnly |  1.038 ms |  0.0224 ms | 0.0012 ms |  0.97 |
+| 'CGAL (C++)'           | VerticesOnly |  2.156 ms |  0.2064 ms | 0.0113 ms |  2.01 |
+| NTS                    | VerticesOnly |  5.608 ms |  2.5000 ms | 0.1370 ms |  5.23 |
+| Triangle.NET           | VerticesOnly |  1.355 ms |  0.0418 ms | 0.0023 ms |  1.26 |
 
 ### Key takeaways
 
-- **CDT.NET matches the original C++ implementation (artem-ogre/CDT) and Spade within ≤13%** on both constrained and unconstrained triangulation.
+- **CDT.NET matches the original C++ implementation (artem-ogre/CDT) and Spade within ≤13%**.
 - **CGAL** runs at ~2× CDT.NET. CGAL's `Constrained_Delaunay_triangulation_2` uses a more complex data structure (half-edge DCEL) with additional bookkeeping overhead vs. CDT.NET's compact flat arrays. For raw triangulation throughput CDT.NET is faster.
 - **CDT.NET allocates 5–120× less managed memory** than Triangle.NET and NTS: Triangle.NET allocates ~5.7× more, NTS ~121× more.
 - **NTS (conforming CDT)** is ~30× slower and allocates ~120× more memory — Steiner-point insertion is the main cost, and the result is semantically different (not true CDT).

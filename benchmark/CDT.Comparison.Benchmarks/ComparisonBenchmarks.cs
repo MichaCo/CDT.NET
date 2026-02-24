@@ -2,6 +2,7 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
+using System.Runtime.InteropServices;
 using BenchmarkDotNet.Attributes;
 using BenchmarkDotNet.Configs;
 using CDT;
@@ -16,7 +17,6 @@ using TnMesher = TriangleNet.Meshing.GenericMesher;
 using TnPolygon = TriangleNet.Geometry.Polygon;
 using TnSegment = TriangleNet.Geometry.Segment;
 using TnVertex = TriangleNet.Geometry.Vertex;
-using System.Runtime.InteropServices;
 
 // ---------------------------------------------------------------------------
 // Shared input reader
@@ -69,7 +69,7 @@ internal static class CdtNetAdapter
         for (int i = 0; i < xs.Length; i++)
             verts.Add(new V2d<double>(xs[i], ys[i]));
 
-        var cdt = new Triangulation<double>(VertexInsertionOrder.Auto);
+        var cdt = new Triangulation<double>(VertexInsertionOrder.Auto, IntersectingConstraintEdges.TryResolve, 0.0);
         cdt.InsertVertices(verts);
         return cdt.Triangles.Length;
     }
@@ -84,9 +84,25 @@ internal static class CdtNetAdapter
         for (int i = 0; i < ev1.Length; i++)
             edges.Add(new CdtEdge(ev1[i], ev2[i]));
 
-        var cdt = new Triangulation<double>(VertexInsertionOrder.Auto);
+        var cdt = new Triangulation<double>(VertexInsertionOrder.Auto, IntersectingConstraintEdges.TryResolve, 0.0);
         cdt.InsertVertices(verts);
         cdt.InsertEdges(edges);
+        return cdt.Triangles.Length;
+    }
+
+    public static int Conforming(double[] xs, double[] ys, int[] ev1, int[] ev2)
+    {
+        var verts = new List<V2d<double>>(xs.Length);
+        for (int i = 0; i < xs.Length; i++)
+            verts.Add(new V2d<double>(xs[i], ys[i]));
+
+        var edges = new List<CdtEdge>(ev1.Length);
+        for (int i = 0; i < ev1.Length; i++)
+            edges.Add(new CdtEdge(ev1[i], ev2[i]));
+
+        var cdt = new Triangulation<double>(VertexInsertionOrder.Auto, IntersectingConstraintEdges.TryResolve, 0.0);
+        cdt.InsertVertices(verts);
+        cdt.ConformToEdges(edges);
         return cdt.Triangles.Length;
     }
 }
@@ -118,7 +134,32 @@ internal static class TriangleNetAdapter
         for (int i = 0; i < ev1.Length; i++)
             polygon.Add(new TnSegment(verts[ev1[i]], verts[ev2[i]]));
 
-        return new TnMesher().Triangulate(polygon).Triangles.Count;
+        return new TnMesher().Triangulate(polygon, new TriangleNet.Meshing.ConstraintOptions()
+        {
+            ConformingDelaunay = false,
+            SegmentSplitting = 2,
+            Convex = true
+        }).Triangles.Count;
+    }
+
+    public static int Conforming(double[] xs, double[] ys, int[] ev1, int[] ev2)
+    {
+        var polygon = new TnPolygon(xs.Length);
+        var verts = new TnVertex[xs.Length];
+        for (int i = 0; i < xs.Length; i++)
+        {
+            verts[i] = new TnVertex(xs[i], ys[i]);
+            polygon.Add(verts[i]);
+        }
+        for (int i = 0; i < ev1.Length; i++)
+            polygon.Add(new TnSegment(verts[ev1[i]], verts[ev2[i]]));
+
+        return new TnMesher().Triangulate(polygon, new TriangleNet.Meshing.ConstraintOptions()
+        {
+            ConformingDelaunay = true,
+            SegmentSplitting = 2,
+            Convex = true
+        }).Triangles.Count;
     }
 }
 
@@ -139,6 +180,7 @@ internal static class NtsAdapter
             coords[i] = new NtsCoordinate(xs[i], ys[i]);
 
         var builder = new NetTopologySuite.Triangulate.DelaunayTriangulationBuilder();
+        builder.Tolerance = 0.0;
         builder.SetSites(coords);
         return builder.GetTriangles(Gf).NumGeometries;
     }
@@ -158,6 +200,7 @@ internal static class NtsAdapter
             });
 
         var builder = new NetTopologySuite.Triangulate.ConformingDelaunayTriangulationBuilder();
+        builder.Tolerance = 0.0;
         builder.SetSites(new NtsMultiPoint(pts));
         builder.Constraints = new NtsMultiLineString(segments);
         return builder.GetTriangles(Gf).NumGeometries;
@@ -178,13 +221,20 @@ internal static partial class NativeCdtAdapter
         double[] xs, double[] ys, int nVerts,
         int[] ev1, int[] ev2, int nEdges);
 
+    [LibraryImport(Lib, EntryPoint = "cdt_conform_d")]
+    private static partial int Conform(
+        double[] xs, double[] ys, int nVerts,
+        int[] ev1, int[] ev2, int nEdges);
+
     public static int VerticesOnly(double[] xs, double[] ys) =>
         Triangulate(xs, ys, xs.Length, [], [], 0);
 
     public static int Constrained(double[] xs, double[] ys, int[] ev1, int[] ev2) =>
         Triangulate(xs, ys, xs.Length, ev1, ev2, ev1.Length);
-}
 
+    public static int Conforming(double[] xs, double[] ys, int[] ev1, int[] ev2) =>
+        Conform(xs, ys, xs.Length, ev1, ev2, ev1.Length);
+}
 
 // ---------------------------------------------------------------------------
 // Adapter — Spade  (Rust via P/Invoke, spade 2.15.0)
@@ -201,13 +251,20 @@ internal static partial class SpadeAdapter
         double[] xs, double[] ys, int nVerts,
         int[] ev1, int[] ev2, int nEdges);
 
+    [LibraryImport(Lib, EntryPoint = "spade_conform")]
+    private static partial int SpadeConform(
+        double[] xs, double[] ys, int nVerts,
+        int[] ev1, int[] ev2, int nEdges);
+
     public static int VerticesOnly(double[] xs, double[] ys) =>
         SpadeTriangulate(xs, ys, xs.Length, [], [], 0);
 
     public static int Constrained(double[] xs, double[] ys, int[] ev1, int[] ev2) =>
         SpadeTriangulate(xs, ys, xs.Length, ev1, ev2, ev1.Length);
-}
 
+    public static int Conforming(double[] xs, double[] ys, int[] ev1, int[] ev2) =>
+        SpadeConform(xs, ys, xs.Length, ev1, ev2, ev1.Length);
+}
 
 // ---------------------------------------------------------------------------
 // Adapter — CGAL  (C++ via P/Invoke, CGAL 5.x/6.x)
@@ -227,13 +284,20 @@ internal static partial class CgalAdapter
         double[] xs, double[] ys, int nVerts,
         int[] ev1, int[] ev2, int nEdges);
 
+    [LibraryImport(Lib, EntryPoint = "cgal_conform")]
+    private static partial int CgalConform(
+        double[] xs, double[] ys, int nVerts,
+        int[] ev1, int[] ev2, int nEdges);
+
     public static int VerticesOnly(double[] xs, double[] ys) =>
         CgalTriangulate(xs, ys, xs.Length, [], [], 0);
 
     public static int Constrained(double[] xs, double[] ys, int[] ev1, int[] ev2) =>
         CgalTriangulate(xs, ys, xs.Length, ev1, ev2, ev1.Length);
-}
 
+    public static int Conforming(double[] xs, double[] ys, int[] ev1, int[] ev2) =>
+        CgalConform(xs, ys, xs.Length, ev1, ev2, ev1.Length);
+}
 
 // (~2 600 vertices, ~2 600 constraint edges)
 // ---------------------------------------------------------------------------
@@ -258,25 +322,25 @@ public class ComparisonBenchmarks
     [BenchmarkCategory("VerticesOnly")]
     public int VO_CdtNet() => CdtNetAdapter.VerticesOnly(_xs, _ys);
 
-    [Benchmark(Description = "Triangle.NET")]
-    [BenchmarkCategory("VerticesOnly")]
-    public int VO_TriangleNet() => TriangleNetAdapter.VerticesOnly(_xs, _ys);
-
-    [Benchmark(Description = "NTS")]
-    [BenchmarkCategory("VerticesOnly")]
-    public int VO_Nts() => NtsAdapter.VerticesOnly(_xs, _ys);
-
     [Benchmark(Description = "artem-ogre/CDT (C++)")]
     [BenchmarkCategory("VerticesOnly")]
     public int VO_NativeCdt() => NativeCdtAdapter.VerticesOnly(_xs, _ys);
+
+    [Benchmark(Description = "Spade (Rust)")]
+    [BenchmarkCategory("VerticesOnly")]
+    public int VO_Spade() => SpadeAdapter.VerticesOnly(_xs, _ys);
 
     [Benchmark(Description = "CGAL (C++)")]
     [BenchmarkCategory("VerticesOnly")]
     public int VO_Cgal() => CgalAdapter.VerticesOnly(_xs, _ys);
 
-    [Benchmark(Description = "Spade (Rust)")]
+    [Benchmark(Description = "NTS")]
     [BenchmarkCategory("VerticesOnly")]
-    public int VO_Spade() => SpadeAdapter.VerticesOnly(_xs, _ys);
+    public int VO_Nts() => NtsAdapter.VerticesOnly(_xs, _ys);
+
+    [Benchmark(Description = "Triangle.NET")]
+    [BenchmarkCategory("VerticesOnly")]
+    public int VO_TriangleNet() => TriangleNetAdapter.VerticesOnly(_xs, _ys);
 
     // -- Constrained ---------------------------------------------------------
 
@@ -284,23 +348,45 @@ public class ComparisonBenchmarks
     [BenchmarkCategory("Constrained")]
     public int CDT_CdtNet() => CdtNetAdapter.Constrained(_xs, _ys, _ev1, _ev2);
 
-    [Benchmark(Description = "Triangle.NET")]
-    [BenchmarkCategory("Constrained")]
-    public int CDT_TriangleNet() => TriangleNetAdapter.Constrained(_xs, _ys, _ev1, _ev2);
-
-    [Benchmark(Description = "NTS (Conforming CDT)")]
-    [BenchmarkCategory("Constrained")]
-    public int CDT_Nts() => NtsAdapter.Conforming(_xs, _ys, _ev1, _ev2);
-
     [Benchmark(Description = "artem-ogre/CDT (C++)")]
     [BenchmarkCategory("Constrained")]
     public int CDT_NativeCdt() => NativeCdtAdapter.Constrained(_xs, _ys, _ev1, _ev2);
+
+    [Benchmark(Description = "Spade (Rust)")]
+    [BenchmarkCategory("Constrained")]
+    public int CDT_Spade() => SpadeAdapter.Constrained(_xs, _ys, _ev1, _ev2);
 
     [Benchmark(Description = "CGAL (C++)")]
     [BenchmarkCategory("Constrained")]
     public int CDT_Cgal() => CgalAdapter.Constrained(_xs, _ys, _ev1, _ev2);
 
-    [Benchmark(Description = "Spade (Rust)")]
+    [Benchmark(Description = "Triangle.NET")]
     [BenchmarkCategory("Constrained")]
-    public int CDT_Spade() => SpadeAdapter.Constrained(_xs, _ys, _ev1, _ev2);
+    public int CDT_TriangleNet() => TriangleNetAdapter.Constrained(_xs, _ys, _ev1, _ev2);
+
+    // - Conforming ----------------------------------------------------------
+
+    [Benchmark(Baseline = true, Description = "CDT.NET")]
+    [BenchmarkCategory("Conforming")]
+    public int CfDT_CdtNet() => CdtNetAdapter.Conforming(_xs, _ys, _ev1, _ev2);
+
+    [Benchmark(Description = "artem-ogre/CDT (C++)")]
+    [BenchmarkCategory("Conforming")]
+    public int CfDT_NativeCdt() => NativeCdtAdapter.Conforming(_xs, _ys, _ev1, _ev2);
+
+    [Benchmark(Description = "Spade (Rust)")]
+    [BenchmarkCategory("Conforming")]
+    public int CfDT_Spade() => SpadeAdapter.Conforming(_xs, _ys, _ev1, _ev2);
+
+    [Benchmark(Description = "CGAL (C++)")]
+    [BenchmarkCategory("Conforming")]
+    public int CfDT_Cgal() => CgalAdapter.Conforming(_xs, _ys, _ev1, _ev2);
+
+    [Benchmark(Description = "NTS")]
+    [BenchmarkCategory("Conforming")]
+    public int CfDT_Nts() => NtsAdapter.Conforming(_xs, _ys, _ev1, _ev2);
+
+    [Benchmark(Description = "Triangle.NET")]
+    [BenchmarkCategory("Conforming")]
+    public int CfDT_TriangleNet() => TriangleNetAdapter.Conforming(_xs, _ys, _ev1, _ev2);
 }
