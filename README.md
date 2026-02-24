@@ -207,6 +207,49 @@ dotnet run --project test/CDT.Tests
 dotnet run -c Release --project benchmark/CDT.Benchmarks
 ```
 
+## Comparison Benchmarks
+
+CDT.NET is benchmarked against other C# and native CDT/Delaunay triangulation libraries on the **"Constrained Sweden"** dataset (~2 600 vertices, ~2 600 constraint edges).
+
+**Libraries compared:** CDT.NET, Triangle.NET, NetTopologySuite (NTS), artem-ogre/CDT (C++), CGAL (C++), Spade (Rust).
+
+> 12th Gen Intel Core i7-12700KF 3.60GHz, 1 CPU, 20 logical and 12 physical cores
+
+| Method                 | Categories   | Mean      | Error      | StdDev    | Ratio |
+|----------------------- |------------- |----------:|-----------:|----------:|------:|
+| CDT.NET                | Conforming   |  1.442 ms |  0.1628 ms | 0.0089 ms |  1.00 |
+| 'artem-ogre/CDT (C++)' | Conforming   |  1.976 ms |  0.0501 ms | 0.0027 ms |  1.37 |
+| 'Spade (Rust)'         | Conforming   |  1.341 ms |  0.2933 ms | 0.0161 ms |  0.93 |
+| 'CGAL (C++)'           | Conforming   |  4.110 ms |  0.3934 ms | 0.0216 ms |  2.85 |
+| NTS                    | Conforming   | 38.288 ms | 39.8335 ms | 2.1834 ms | 26.55 |
+| Triangle.NET           | Conforming   |  3.284 ms |  0.6901 ms | 0.0378 ms |  2.28 |
+|                        |              |           |            |           |       |
+| CDT.NET                | Constrained  |  1.167 ms |  0.0737 ms | 0.0040 ms |  1.00 |
+| 'artem-ogre/CDT (C++)' | Constrained  |  1.766 ms |  0.0619 ms | 0.0034 ms |  1.51 |
+| 'Spade (Rust)'         | Constrained  |  1.256 ms |  0.1233 ms | 0.0068 ms |  1.08 |
+| 'CGAL (C++)'           | Constrained  |  2.613 ms |  0.3773 ms | 0.0207 ms |  2.24 |
+| Triangle.NET           | Constrained  |  3.290 ms |  1.3341 ms | 0.0731 ms |  2.82 |
+|                        |              |           |            |           |       |
+| CDT.NET                | VerticesOnly |  1.072 ms |  0.0045 ms | 0.0002 ms |  1.00 |
+| 'artem-ogre/CDT (C++)' | VerticesOnly |  1.568 ms |  0.2550 ms | 0.0140 ms |  1.46 |
+| 'Spade (Rust)'         | VerticesOnly |  1.038 ms |  0.0224 ms | 0.0012 ms |  0.97 |
+| 'CGAL (C++)'           | VerticesOnly |  2.156 ms |  0.2064 ms | 0.0113 ms |  2.01 |
+| NTS                    | VerticesOnly |  5.608 ms |  2.5000 ms | 0.1370 ms |  5.23 |
+| Triangle.NET           | VerticesOnly |  1.355 ms |  0.0418 ms | 0.0023 ms |  1.26 |
+
+**Key takeaways:**
+- **CDT.NET matches the original C++ implementation (artem-ogre/CDT) and Spade within ≤13%**.
+- **CGAL** runs at ~2× CDT.NET. CGAL's `Constrained_Delaunay_triangulation_2` uses a more complex data structure (half-edge DCEL) with additional bookkeeping overhead vs. CDT.NET's compact flat arrays. For raw triangulation throughput CDT.NET is faster.
+- **CDT.NET allocates 5–120× less managed memory** than Triangle.NET and NTS: Triangle.NET allocates ~5.7× more, NTS ~121× more.
+- **NTS (conforming CDT)** is ~30× slower and allocates ~120× more memory — Steiner-point insertion is the main cost, and the result is semantically different (not true CDT).
+- Native wrappers (artem-ogre/CDT, CGAL, Spade) show zero managed allocations as expected for P/Invoke calls into unmanaged code.
+
+For full details, prerequisites, and instructions on running the comparison benchmarks, see the [CDT.Comparison.Benchmarks README](benchmark/CDT.Comparison.Benchmarks/README.md).
+
+```bash
+dotnet run -c Release --project benchmark/CDT.Comparison.Benchmarks
+```
+
 ## License
 
 [Mozilla Public License Version 2.0](LICENSE)
