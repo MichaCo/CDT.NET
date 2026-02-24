@@ -366,7 +366,7 @@ public class ComparisonBenchmarks
 
     // - Conforming ----------------------------------------------------------
 
-    [Benchmark(Description = "CDT.NET")]
+    [Benchmark(Baseline = true, Description = "CDT.NET")]
     [BenchmarkCategory("Conforming")]
     public int CfDT_CdtNet() => CdtNetAdapter.Conforming(_xs, _ys, _ev1, _ev2);
 
