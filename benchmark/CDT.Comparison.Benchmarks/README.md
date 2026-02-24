@@ -90,29 +90,24 @@ Results are written to `BenchmarkDotNet.Artifacts/` in the current directory.
 
 ## Benchmark results
 
-Measured on **AMD EPYC 7763 2.45 GHz, 1 CPU, 4 logical / 2 physical cores, .NET 10.0.2, Linux Ubuntu 24.04** using `[ShortRunJob]` (3 warmup + 3 iterations).  Dataset: **Constrained Sweden** (~2 600 vertices, ~2 600 constraint edges).
+> 12th Gen Intel Core i7-12700KF 3.60GHz, 1 CPU, 20 logical and 12 physical cores
 
-### Constrained CDT
+| Method                 | Categories   | Mean      | Error     | StdDev    | Ratio | RatioSD |
+|----------------------- |------------- |----------:|----------:|----------:|------:|--------:|
+| **CDT.NET**            | Constrained  |  1.198 ms | 0.1065 ms | 0.0058 ms |  1.00 |    0.01 |
+| Triangle.NET           | Constrained  |  4.571 ms | 2.2827 ms | 0.1251 ms |  3.82 |    0.09 |
+| 'NTS (Conforming CDT)' | Constrained  | 37.066 ms | 8.5571 ms | 0.4690 ms | 30.95 |    0.36 |
+| 'artem-ogre/CDT (C++)' | Constrained  |  1.788 ms | 0.1284 ms | 0.0070 ms |  1.49 |    0.01 |
+| 'CGAL (C++)'           | Constrained  |  2.538 ms | 0.0574 ms | 0.0031 ms |  2.12 |    0.01 |
+| 'Spade (Rust)'         | Constrained  |  1.255 ms | 0.1050 ms | 0.0058 ms |  1.05 |    0.01 |
+|                        |              |           |           |           |       |         |
+| **CDT.NET**            | VerticesOnly |  1.048 ms | 0.0371 ms | 0.0020 ms |  1.00 |    0.00 |
+| Triangle.NET           | VerticesOnly |  1.323 ms | 0.1856 ms | 0.0102 ms |  1.26 |    0.01 |
+| NTS                    | VerticesOnly |  5.519 ms | 2.8885 ms | 0.1583 ms |  5.26 |    0.13 |
+| 'CGAL (C++)'           | VerticesOnly |  2.063 ms | 0.2154 ms | 0.0118 ms |  1.97 |    0.01 |
+| 'artem-ogre/CDT (C++)' | VerticesOnly |  1.557 ms | 0.1013 ms | 0.0056 ms |  1.49 |    0.01 |
+| 'Spade (Rust)'         | VerticesOnly |  1.028 ms | 0.0803 ms | 0.0044 ms |  0.98 |    0.00 |
 
-| Library | Mean | Error | StdDev | Ratio | Allocated | Alloc Ratio |
-|---------|-----:|------:|-------:|------:|----------:|------------:|
-| **CDT.NET** *(baseline)* | 1,759 μs | 143.0 μs | 7.8 μs | 1.00 | 495 KB | 1.00 |
-| artem-ogre/CDT (C++) | 1,961 μs | 85.4 μs | 4.7 μs | 1.11 | — | 0.00 |
-| Spade (Rust) | 1,989 μs | 120.0 μs | 6.6 μs | 1.13 | — | 0.00 |
-| CGAL (C++) | 3,659 μs | 288.2 μs | 15.8 μs | 2.08 | — | 0.00 |
-| Triangle.NET | 6,405 μs | 2,193.7 μs | 120.2 μs | 3.64 | 2,817 KB | 5.70 |
-| NTS (Conforming CDT) | 54,282 μs | 10,703.7 μs | 586.7 μs | 30.86 | 59,937 KB | 121.19 |
-
-### Vertices-only (Delaunay, no constraints)
-
-| Library | Mean | Error | StdDev | Ratio | Allocated | Alloc Ratio |
-|---------|-----:|------:|-------:|------:|----------:|------------:|
-| **CDT.NET** *(baseline)* | 1,584 μs | 135.3 μs | 7.4 μs | 1.00 | 322 KB | 1.00 |
-| artem-ogre/CDT (C++) | 1,586 μs | 54.8 μs | 3.0 μs | 1.00 | — | 0.00 |
-| Spade (Rust) | 1,613 μs | 27.3 μs | 1.5 μs | 1.02 | — | 0.00 |
-| CGAL (C++) | 3,254 μs | 104.8 μs | 5.7 μs | 2.05 | — | 0.00 |
-| Triangle.NET | 2,134 μs | 298.8 μs | 16.4 μs | 1.35 | 1,760 KB | 5.47 |
-| NTS | 7,960 μs | 1,199.3 μs | 65.7 μs | 5.03 | 4,373 KB | 13.58 |
 
 ### Key takeaways
 
