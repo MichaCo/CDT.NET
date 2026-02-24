@@ -35,6 +35,18 @@ public sealed class DuplicateVertexException : TriangulationException
     }
 }
 
+/// <summary>
+/// Thrown when a mutating method is called after the triangulation has been finalized
+/// (i.e., after any <c>Erase*</c> method has been called).
+/// </summary>
+public sealed class TriangulationFinalizedException : TriangulationException
+{
+    /// <inheritdoc/>
+    public TriangulationFinalizedException()
+        : base("The triangulation has already been finalized. No further modifications are allowed after calling an Erase method.")
+    { }
+}
+
 /// <summary>Thrown when intersecting constraint edges are detected and <see cref="IntersectingConstraintEdges.NotAllowed"/> is set.</summary>
 public sealed class IntersectingConstraintsException : TriangulationException
 {
@@ -154,6 +166,7 @@ public sealed class Triangulation<T>
     /// <summary>Inserts a list of vertices into the triangulation.</summary>
     public void InsertVertices(IReadOnlyList<V2d<T>> newVertices)
     {
+        if (IsFinalized) throw new TriangulationFinalizedException();
         if (newVertices.Count == 0) return;
 
         bool isFirstInsertion = _kdTree == null && _verticesCount == 0;
@@ -217,6 +230,7 @@ public sealed class Triangulation<T>
     /// <summary>Inserts constraint edges (constrained Delaunay triangulation).</summary>
     public void InsertEdges(IReadOnlyList<Edge> edges)
     {
+        if (IsFinalized) throw new TriangulationFinalizedException();
         var remaining = new List<Edge>(4);
         var tppTasks = new List<TriangulatePseudoPolygonTask>(8);
         var polyL = new List<int>(8);
@@ -246,6 +260,7 @@ public sealed class Triangulation<T>
     /// </summary>
     public void ConformToEdges(IReadOnlyList<Edge> edges)
     {
+        if (IsFinalized) throw new TriangulationFinalizedException();
         var remaining = new List<ConformToEdgeTask>(8);
         var flipStack = new Stack<int>(4);
         var flippedFixed = new List<Edge>(8);
@@ -270,6 +285,7 @@ public sealed class Triangulation<T>
     /// <summary>Removes the super-triangle to produce a convex hull triangulation.</summary>
     public void EraseSuperTriangle()
     {
+        if (IsFinalized) throw new TriangulationFinalizedException();
         if (_superGeomType != SuperGeometryType.SuperTriangle) return;
         var toErase = new HashSet<int>();
         for (int i = 0; i < _trianglesCount; i++)
@@ -283,6 +299,7 @@ public sealed class Triangulation<T>
     /// <summary>Removes all outer triangles (flood-fill from super-triangle vertex until a constraint edge).</summary>
     public void EraseOuterTriangles()
     {
+        if (IsFinalized) throw new TriangulationFinalizedException();
         if (_vertTris[0] == Indices.NoNeighbor)
             throw new TriangulationException("No vertex triangle data – already finalized?");
         var seeds = new Stack<int>();
@@ -297,6 +314,7 @@ public sealed class Triangulation<T>
     /// </summary>
     public void EraseOuterTrianglesAndHoles()
     {
+        if (IsFinalized) throw new TriangulationFinalizedException();
         var depths = CalculateTriangleDepths();
         var toErase = new HashSet<int>();
         for (int i = 0; i < _trianglesCount; i++)

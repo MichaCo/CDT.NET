@@ -222,6 +222,81 @@ public abstract class TriangulationTestsBase<T>
         Assert.True(TopologyVerifier.VerifyTopology(cdt));
         Assert.Equal(5, cdt.Vertices.Length);
     }
+
+    // -------------------------------------------------------------------------
+    // IsFinalized guard checks
+    // -------------------------------------------------------------------------
+
+    [Fact]
+    public void InsertVertices_AfterFinalized_ThrowsTriangulationFinalizedException()
+    {
+        var cdt = CreateCdt();
+        cdt.InsertVertices([Pt(0, 0), Pt(1, 0), Pt(0.5, 1)]);
+        cdt.EraseSuperTriangle();
+
+        Assert.True(cdt.IsFinalized);
+        Assert.Throws<TriangulationFinalizedException>(() =>
+            cdt.InsertVertices([Pt(2, 0)]));
+    }
+
+    [Fact]
+    public void InsertEdges_AfterFinalized_ThrowsTriangulationFinalizedException()
+    {
+        var cdt = CreateCdt();
+        cdt.InsertVertices([Pt(0, 0), Pt(1, 0), Pt(1, 1), Pt(0, 1)]);
+        cdt.EraseSuperTriangle();
+
+        Assert.True(cdt.IsFinalized);
+        Assert.Throws<TriangulationFinalizedException>(() =>
+            cdt.InsertEdges([new Edge(0, 2)]));
+    }
+
+    [Fact]
+    public void ConformToEdges_AfterFinalized_ThrowsTriangulationFinalizedException()
+    {
+        var cdt = CreateCdt();
+        cdt.InsertVertices([Pt(0, 0), Pt(1, 0), Pt(1, 1), Pt(0, 1)]);
+        cdt.EraseSuperTriangle();
+
+        Assert.True(cdt.IsFinalized);
+        Assert.Throws<TriangulationFinalizedException>(() =>
+            cdt.ConformToEdges([new Edge(0, 2)]));
+    }
+
+    [Fact]
+    public void EraseSuperTriangle_AfterFinalized_ThrowsTriangulationFinalizedException()
+    {
+        var cdt = CreateCdt();
+        cdt.InsertVertices([Pt(0, 0), Pt(1, 0), Pt(0.5, 1)]);
+        cdt.EraseSuperTriangle();
+
+        Assert.True(cdt.IsFinalized);
+        Assert.Throws<TriangulationFinalizedException>(() => cdt.EraseSuperTriangle());
+    }
+
+    [Fact]
+    public void EraseOuterTriangles_AfterFinalized_ThrowsTriangulationFinalizedException()
+    {
+        var cdt = CreateCdt();
+        cdt.InsertVertices([Pt(0, 0), Pt(1, 0), Pt(1, 1), Pt(0, 1)]);
+        cdt.InsertEdges([new Edge(0, 1), new Edge(1, 2), new Edge(2, 3), new Edge(3, 0)]);
+        cdt.EraseOuterTriangles();
+
+        Assert.True(cdt.IsFinalized);
+        Assert.Throws<TriangulationFinalizedException>(() => cdt.EraseOuterTriangles());
+    }
+
+    [Fact]
+    public void EraseOuterTrianglesAndHoles_AfterFinalized_ThrowsTriangulationFinalizedException()
+    {
+        var cdt = CreateCdt();
+        cdt.InsertVertices([Pt(0, 0), Pt(1, 0), Pt(1, 1), Pt(0, 1)]);
+        cdt.InsertEdges([new Edge(0, 1), new Edge(1, 2), new Edge(2, 3), new Edge(3, 0)]);
+        cdt.EraseOuterTrianglesAndHoles();
+
+        Assert.True(cdt.IsFinalized);
+        Assert.Throws<TriangulationFinalizedException>(() => cdt.EraseOuterTrianglesAndHoles());
+    }
 }
 
 /// <summary>Triangulation tests for <see cref="double"/>.</summary>
