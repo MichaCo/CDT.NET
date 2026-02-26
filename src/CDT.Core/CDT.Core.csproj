@@ -16,10 +16,6 @@
   <PropertyGroup>
     <PackageId>CDT.NET</PackageId>
     <VersionPrefix>1.0.0</VersionPrefix>
-
-    <!-- remove when we done testing -->
-    <VersionSuffix>beta</VersionSuffix>
-
     <Authors>Michael Conrad</Authors>
     <Copyright>Copyright © 2026 Michael Conrad</Copyright>
     <Description>A fast and robust C# port of the artem-ogre/CDT Constrained Delaunay Triangulation library. Supports constrained edges, holes, and modern .NET 8+ optimizations.</Description>
