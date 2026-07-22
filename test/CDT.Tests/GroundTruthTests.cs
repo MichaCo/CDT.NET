@@ -23,7 +23,7 @@ public static class TestInputReader
     public static (List<V2d<T>> Vertices, List<Edge> Edges) ReadInput<T>(string path)
         where T : IFloatingPoint<T>
     {
-        var lines = File.ReadAllLines(path).Where(l => l.Trim().Length > 0).ToArray();
+        var lines = File.ReadAllLines(path).Where(l => !string.IsNullOrWhiteSpace(l)).ToArray();
         int idx = 0;
 
         var header = Split(lines[idx++]);

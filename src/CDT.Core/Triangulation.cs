@@ -1435,6 +1435,8 @@ public sealed class Triangulation<T>
     /// </summary>
     private Triangle TriangleAt(int iT)
     {
+        // Unsigned comparison also catches negative indices (e.g. Indices.NoNeighbor = -1)
+        // since they wrap to large unsigned values, exceeding _trianglesCount.
         if ((uint)iT >= (uint)_trianglesCount)
         {
             throw new TriangulationException(
