@@ -3,6 +3,7 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 using System.Globalization;
+using System.Linq;
 using System.Numerics;
 using System.Text;
 
@@ -22,7 +23,7 @@ public static class TestInputReader
     public static (List<V2d<T>> Vertices, List<Edge> Edges) ReadInput<T>(string path)
         where T : IFloatingPoint<T>
     {
-        var lines = File.ReadAllLines(path);
+        var lines = File.ReadAllLines(path).Where(l => l.Trim().Length > 0).ToArray();
         int idx = 0;
 
         var header = Split(lines[idx++]);
@@ -649,6 +650,55 @@ public sealed class RegressionTests
         cdt.InsertVertices(verts);
         cdt.InsertEdges(edges);
         Assert.True(TopologyVerifier.VerifyTopology(cdt));
+    }
+
+    // ---- Issue 212: near-endpoint constraints intersection ----
+
+    [Fact]
+    public void Issue212_ZeroMinDist_ThrowsInvalidEdgeSplitVertex()
+    {
+        // Near-degenerate constraint edges whose intersection point rounds onto an
+        // existing vertex (see https://github.com/artem-ogre/CDT/issues/212).
+        // Previously corrupted the triangulation (out-of-bounds access), now
+        // reported as an exception.
+        var vertices = new List<V2d<float>>
+        {
+            new(-0.586449921f, -0.606724977f),
+            new(-0.591448665f, -0.546940088f),
+            new(-0.597282887f, -0.475633264f),
+            new(-0.591453075f, -0.546887279f),
+            new(-0.586451471f, -0.606724977f),
+        };
+        var edges = new List<Edge>
+        {
+            new(0, 1), new(1, 2), new(2, 3), new(3, 4), new(4, 0),
+        };
+
+        var cdt = new Triangulation<float>(
+            VertexInsertionOrder.Auto,
+            IntersectingConstraintEdges.TryResolve,
+            0.0f);
+        cdt.InsertVertices(vertices);
+        Assert.Throws<InvalidEdgeSplitVertexException>(() => cdt.InsertEdges(edges));
+    }
+
+    // ---- Issue 211: near-degenerate constraints intersection ----
+
+    [Fact]
+    public void Issue211_NearDegenerateIntersection_ThrowsInvalidEdgeSplitVertex()
+    {
+        // Polygon whose constraint edges intersect at near-degenerate points; same
+        // root cause as #212 (https://github.com/artem-ogre/CDT/issues/211).
+        // With minDistToConstraintEdge = 5e-17 the intersection can not be
+        // resolved and is now reported as an exception instead of crashing.
+        var (verts, edges) = TestInputReader.ReadInput<double>(
+            GroundTruthHelpers.InputPath("issue-211.txt"));
+        var cdt = new Triangulation<double>(
+            VertexInsertionOrder.Auto,
+            IntersectingConstraintEdges.TryResolve,
+            5e-17);
+        cdt.InsertVertices(verts);
+        Assert.Throws<InvalidEdgeSplitVertexException>(() => cdt.InsertEdges(edges));
     }
 
     // ---- Two-part insertion batches ----
