@@ -189,6 +189,8 @@ cdt.InsertEdges(edges); // intersection is resolved by inserting a new vertex
 cdt.EraseSuperTriangle();
 ```
 
+Resolving is not always possible for nearly-degenerate intersections (e.g. an intersection right next to an edge's endpoint): in such cases `InvalidEdgeSplitVertexException` is thrown.
+
 ## Building
 
 ```bash

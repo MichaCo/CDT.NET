@@ -66,6 +66,29 @@ public sealed class IntersectingConstraintsException : TriangulationException
 }
 
 /// <summary>
+/// Thrown when resolving intersecting constraint edges fails because floating-point
+/// rounding places the computed split vertex outside the two triangles adjacent to
+/// the edge being split, so it can not be safely inserted.
+/// </summary>
+public sealed class InvalidEdgeSplitVertexException : TriangulationException
+{
+    /// <summary>First intersecting constraint edge.</summary>
+    public Edge E1 { get; }
+
+    /// <summary>Second intersecting constraint edge.</summary>
+    public Edge E2 { get; }
+
+    /// <inheritdoc/>
+    public InvalidEdgeSplitVertexException(Edge e1, Edge e2)
+        : base($"Intersection of constraint edges ({e1.V1}, {e1.V2}) and ({e2.V1}, {e2.V2}) " +
+               "can not be resolved: computed split vertex is invalid")
+    {
+        E1 = e1;
+        E2 = e2;
+    }
+}
+
+/// <summary>
 /// 2D constrained Delaunay triangulation.
 /// Supports both constrained and conforming modes.
 /// </summary>
@@ -900,7 +923,7 @@ public sealed class Triangulation<T>
         while (!t.ContainsVertex(iB))
         {
             int iTopo = CdtUtils.OpposedTriangle(t, iV);
-            var tOpo = _triangles[iTopo];
+            var tOpo = TriangleAt(iTopo);
             int iVopo = CdtUtils.OpposedVertex(tOpo, iT);
 
             HandleIntersectingEdgeStrategy(iVL, iVR, iA, iB, iT, iTopo, originalEdge, a, b, distTol, remaining, tppIterations, out bool @return);
@@ -977,12 +1000,9 @@ public sealed class Triangulation<T>
             case IntersectingConstraintEdges.NotAllowed:
                 if (_fixedEdges.Contains(edgeLR))
                 {
-                    var e1 = originalEdge;
-                    var e2 = edgeLR;
-                    if (_pieceToOriginals.TryGetValue(e2, out var origE2) && origE2.Count > 0) e2 = origE2[0];
-                    e1 = new Edge(e1.V1 - _nTargetVerts, e1.V2 - _nTargetVerts);
-                    e2 = new Edge(e2.V1 - _nTargetVerts, e2.V2 - _nTargetVerts);
-                    throw new IntersectingConstraintsException(e1, e2);
+                    throw new IntersectingConstraintsException(
+                        OriginalInputEdge(originalEdge),
+                        OriginalInputEdge(edgeLR));
                 }
                 break;
 
@@ -990,6 +1010,12 @@ public sealed class Triangulation<T>
                 if (_fixedEdges.Contains(edgeLR))
                 {
                     var newV = IntersectionPosition(_vertices[iA], _vertices[iB], _vertices[iVL], _vertices[iVR]);
+                    if (!IsEdgeSplitVertexValid(newV, iT, iTopo, iVL, iVR))
+                    {
+                        throw new InvalidEdgeSplitVertexException(
+                            OriginalInputEdge(originalEdge),
+                            OriginalInputEdge(edgeLR));
+                    }
                     int iNewVert = SplitFixedEdgeAt(edgeLR, newV, iT, iTopo);
                     remaining.Add(new Edge(iA, iNewVert));
                     remaining.Add(new Edge(iNewVert, iB));
@@ -1043,11 +1069,11 @@ public sealed class Triangulation<T>
         while (!t.ContainsVertex(iB))
         {
             int iTopo = CdtUtils.OpposedTriangle(t, iV);
-            var tOpo = _triangles[iTopo];
+            var tOpo = TriangleAt(iTopo);
             int iVopo = CdtUtils.OpposedVertex(tOpo, iT);
             var vOpo = _vertices[iVopo];
 
-            HandleConformIntersecting(iVleft, iVright, iA, iB, iT, iTopo,
+            HandleConformIntersecting(edge, iVleft, iVright, iA, iB, iT, iTopo,
                 originals, overlaps, remaining, out bool @return);
             if (@return) return;
 
@@ -1085,7 +1111,7 @@ public sealed class Triangulation<T>
     }
 
     private void HandleConformIntersecting(
-        int iVleft, int iVright, int iA, int iB, int iT, int iTopo,
+        Edge edge, int iVleft, int iVright, int iA, int iB, int iT, int iTopo,
         List<Edge> originals, ushort overlaps,
         List<ConformToEdgeTask> remaining,
         out bool @return)
@@ -1097,16 +1123,21 @@ public sealed class Triangulation<T>
             case IntersectingConstraintEdges.NotAllowed:
                 if (_fixedEdges.Contains(edgeLR))
                 {
-                    var e1 = _pieceToOriginals.TryGetValue(edgeLR, out var po1) && po1.Count > 0 ? po1[0] : edgeLR;
                     throw new IntersectingConstraintsException(
-                        new Edge(e1.V1 - _nTargetVerts, e1.V2 - _nTargetVerts),
-                        edgeLR);
+                        OriginalInputEdge(edge),
+                        OriginalInputEdge(edgeLR));
                 }
                 break;
             case IntersectingConstraintEdges.TryResolve:
                 if (_fixedEdges.Contains(edgeLR))
                 {
                     var newV = IntersectionPosition(_vertices[iA], _vertices[iB], _vertices[iVleft], _vertices[iVright]);
+                    if (!IsEdgeSplitVertexValid(newV, iT, iTopo, iVleft, iVright))
+                    {
+                        throw new InvalidEdgeSplitVertexException(
+                            OriginalInputEdge(edge),
+                            OriginalInputEdge(edgeLR));
+                    }
                     int iNewVert = SplitFixedEdgeAt(edgeLR, newV, iT, iTopo);
                     remaining.Add(new ConformToEdgeTask(new Edge(iNewVert, iB), originals, overlaps));
                     remaining.Add(new ConformToEdgeTask(new Edge(iA, iNewVert), originals, overlaps));
@@ -1230,7 +1261,7 @@ public sealed class Triangulation<T>
             int iP2 = t.GetVertex(CdtUtils.Ccw(i));
             var p2 = _vertices[iP2];
             T orientP2 = Orient2D(p2, a, b);
-            var locP2 = CdtUtils.ClassifyOrientation(orientP2, tolerance);
+            var locP2 = CdtUtils.ClassifyOrientation(orientP2, T.Zero);
             if (locP2 == PtLineLocation.Right)
             {
                 int iP1 = t.GetVertex(CdtUtils.Cw(i));
@@ -1347,6 +1378,73 @@ public sealed class Triangulation<T>
         EnsureDelaunayByEdgeFlips(iSplit, stack);
         SplitFixedEdge(edge, iSplit);
         return iSplit;
+    }
+
+    /// <summary>
+    /// Check that a fixed-edge split vertex computed from a constraint-edges
+    /// intersection can be safely inserted.
+    /// </summary>
+    /// <remarks>
+    /// The split position is computed with floating-point arithmetic and may be
+    /// rounded to a location that no longer lies within the two triangles
+    /// sharing the edge being split. Inserting it there would produce an
+    /// inverted/degenerate triangle and break triangulation invariants. As the
+    /// point nominally lies on the split edge, its side relative to that edge
+    /// selects the adjacent triangle it must be contained in; only the two other
+    /// edges of that triangle are tested (robust predicates).
+    /// </remarks>
+    private bool IsEdgeSplitVertexValid(V2d<T> splitVert, int iT, int iTopo, int iVL, int iVR)
+    {
+        // Orient the split edge as it appears (counter-clockwise) in iT. Locating
+        // the (floating-point-rounded) split vertex against it both tells whether
+        // the split is safe and which of the two triangles sharing the edge must
+        // contain the vertex: 'Left' is iT's interior side, 'Right' is iTopo's.
+        var tL = _triangles[iT];
+        int sL = CdtUtils.EdgeNeighborIndex(tL, iVL, iVR);
+        var side = LocatePointLine(splitVert, _vertices[tL.GetVertex(sL)], _vertices[tL.GetVertex(CdtUtils.Ccw(sL))]);
+        if (side == PtLineLocation.OnLine) return true; // vertex lies on the split edge itself: always safe
+        var t = side == PtLineLocation.Left ? tL : _triangles[iTopo];
+
+        // The split vertex must not fall outside that triangle. Its relation to the
+        // split edge is already established by 'side', so only the two edges meeting
+        // at the apex (opposite the split edge) are tested. A point to the right of
+        // a counter-clockwise triangle's edge lies outside it.
+        int s = CdtUtils.EdgeNeighborIndex(t, iVL, iVR);
+        var from = _vertices[t.GetVertex(s)];             // split edge tail (CCW)
+        var to = _vertices[t.GetVertex(CdtUtils.Ccw(s))]; // split edge head (CCW)
+        var apex = _vertices[t.GetVertex(CdtUtils.Cw(s))]; // opposite the split edge
+        return LocatePointLine(splitVert, to, apex) != PtLineLocation.Right &&
+               LocatePointLine(splitVert, apex, from) != PtLineLocation.Right;
+    }
+
+    /// <summary>
+    /// Convert an internal edge to the original input edge it represents: resolve
+    /// edge pieces to their original and drop the super-triangle vertex offset.
+    /// Used to report meaningful edges in constraint-related exceptions.
+    /// </summary>
+    private Edge OriginalInputEdge(Edge e)
+    {
+        var orig = _pieceToOriginals.TryGetValue(e, out var po) && po.Count > 0 ? po[0] : e;
+        return new Edge(orig.V1 - _nTargetVerts, orig.V2 - _nTargetVerts);
+    }
+
+    /// <summary>
+    /// Bounds-checked triangle access. Guards against dereferencing a
+    /// <see cref="Indices.NoNeighbor"/> index, e.g. when an edge-insertion walk
+    /// reaches the triangulation boundary.
+    /// </summary>
+    private Triangle TriangleAt(int iT)
+    {
+        // Unsigned comparison also catches negative indices (e.g. Indices.NoNeighbor = -1)
+        // since they wrap to large unsigned values, exceeding _trianglesCount.
+        if ((uint)iT >= (uint)_trianglesCount)
+        {
+            throw new TriangulationException(
+                iT == Indices.NoNeighbor
+                    ? "Attempted reading no-neighbor sentinel value triangle"
+                    : $"Triangle index {iT} out of range {_trianglesCount}");
+        }
+        return _triangles[iT];
     }
 
     // -------------------------------------------------------------------------
