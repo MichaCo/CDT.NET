@@ -1402,7 +1402,10 @@ public sealed class Triangulation<T>
         var tL = _triangles[iT];
         int sL = CdtUtils.EdgeNeighborIndex(tL, iVL, iVR);
         var side = LocatePointLine(splitVert, _vertices[tL.GetVertex(sL)], _vertices[tL.GetVertex(CdtUtils.Ccw(sL))]);
-        if (side == PtLineLocation.OnLine) return true; // vertex lies on the split edge itself: always safe
+        if (side == PtLineLocation.OnLine)
+        {
+            return splitVert != _vertices[iVL] && splitVert != _vertices[iVR];
+        }
         var t = side == PtLineLocation.Left ? tL : _triangles[iTopo];
 
         // The split vertex must not fall outside that triangle. Its relation to the
