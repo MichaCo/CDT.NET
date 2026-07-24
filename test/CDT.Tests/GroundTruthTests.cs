@@ -701,6 +701,41 @@ public sealed class RegressionTests
         Assert.Throws<InvalidEdgeSplitVertexException>(() => cdt.InsertEdges(edges));
     }
 
+    // ---- Duplicated constraint edge with intersecting constraints ----
+
+    [Fact]
+    public void DuplicateConstraintEdge_TryResolve_ThrowsInvalidEdgeSplitVertex()
+    {
+        // Duplicated constraint edge (0, 3) combined with constraints that
+        // genuinely intersect. Previously looped forever while resolving the
+        // intersection; now reported as an exception.
+        var vertices = new List<V2d<double>>
+        {
+            Pt<double>(6, -6),
+            Pt<double>(7, -4),
+            Pt<double>(8, -8),
+            Pt<double>(7, 5),
+            Pt<double>(0, 7),
+            Pt<double>(-1, 3),
+            Pt<double>(7, 1),
+            Pt<double>(-6, -6),
+        };
+        var edges = new List<Edge>
+        {
+            new(2, 5),
+            new(1, 7),
+            new(4, 6),
+            new(0, 3),
+            new(0, 3), // duplicate
+        };
+        var cdt = new Triangulation<double>(
+            VertexInsertionOrder.Auto,
+            IntersectingConstraintEdges.TryResolve,
+            0.0);
+        cdt.InsertVertices(vertices);
+        Assert.Throws<InvalidEdgeSplitVertexException>(() => cdt.InsertEdges(edges));
+    }
+
     // ---- Two-part insertion batches ----
 
     [Fact]
