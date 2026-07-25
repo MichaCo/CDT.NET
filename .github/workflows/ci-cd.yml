@@ -137,7 +137,7 @@ jobs:
         uses: NuGet/login@v1
         id: login
         with:
-          user: MichaConrad
+          user: MichaCo
 
       - name: Push to NuGet.org
         run: |
