@@ -108,7 +108,7 @@ jobs:
   publish:
     name: Publish to NuGet
     needs: build-and-test
-    runs-on: windows-latest
+    runs-on: ubuntu-latest
     if: startsWith(github.ref, 'refs/tags/v')
     permissions:
       contents: read
@@ -137,7 +137,8 @@ jobs:
         uses: NuGet/login@v1
         id: login
         with:
-          user: MichaCo
+          user: MichaConrad
+          
 
       - name: Push to NuGet.org
         run: |
