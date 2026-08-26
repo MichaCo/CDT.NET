@@ -110,5 +110,4 @@ jobs:
           gh issue create \
             --title "Port upstream CDT changes to C# (${LATEST:0:7}) — ${DATE}" \
             --label "auto-sync" \
-            --assignee "Copilot" \
             --body "$ISSUE_BODY"
