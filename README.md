@@ -6,6 +6,7 @@
 A C# port of the [artem-ogre/CDT](https://github.com/artem-ogre/CDT) Constrained Delaunay Triangulation library.
 
 > **Credits:** This library is a C# port of the excellent [CDT C++ library](https://github.com/artem-ogre/CDT) by Artem Amirkhanov and contributors, licensed under MPL 2.0.
+> The adaptive geometric predicates are ported from `predicates.h` by William C. Lenthe under BSD 3-Clause; see [`LICENSE-predicates.txt`](LICENSE-predicates.txt).
 > For full algorithm documentation, research references, and in-depth API documentation please refer to the [original C++ repository](https://github.com/artem-ogre/CDT) and its [online documentation](https://artem-ogre.github.io/CDT/).
 
 ## What is CDT?
@@ -16,6 +17,7 @@ CDT is a library for generating **Constrained** and **Conforming** Delaunay Tria
 
 - **Constrained Delaunay Triangulation** — force specific edges into the triangulation
 - **Conforming Delaunay Triangulation** — split edges and add Steiner points until constraint edges are present in the triangulation
+- **Delaunay refinement** — improve triangle quality using minimum-angle and maximum-area criteria
 - **Convex-hull** triangulation — triangulate all points without any constraints
 - **Automatic hole detection** — use `EraseOuterTrianglesAndHoles` to remove outer regions and holes based on even–odd winding depth
 - **Robust geometric predicates** — numerically stable orientation and in-circle tests

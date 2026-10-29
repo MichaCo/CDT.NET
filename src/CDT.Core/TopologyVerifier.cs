@@ -53,5 +53,29 @@ public static class TopologyVerifier
         }
         return true;
     }
-}
 
+    /// <summary>Verifies that every triangle has counter-clockwise winding.</summary>
+    public static bool VerifyWinding<T>(Triangulation<T> cdt)
+        where T : unmanaged, IFloatingPoint<T>, IMinMaxValue<T>, IRootFunctions<T>
+        => VerifyWinding(cdt.Vertices.Span, cdt.Triangles.Span);
+
+    /// <summary>Verifies that every triangle has counter-clockwise winding.</summary>
+    public static bool VerifyWinding<T>(
+        ReadOnlySpan<V2d<T>> vertices,
+        ReadOnlySpan<Triangle> triangles)
+        where T : unmanaged, IFloatingPoint<T>
+    {
+        foreach (ref readonly var triangle in triangles)
+        {
+            if ((uint)triangle.V0 >= (uint)vertices.Length ||
+                (uint)triangle.V1 >= (uint)vertices.Length ||
+                (uint)triangle.V2 >= (uint)vertices.Length ||
+                CdtUtils.Orient2D(
+                    vertices[triangle.V0],
+                    vertices[triangle.V1],
+                    vertices[triangle.V2]) <= T.Zero)
+                return false;
+        }
+        return true;
+    }
+}

@@ -367,6 +367,7 @@ public abstract class ConformingTriangulationGroundTruthTestsBase<T>
         cdt.EraseOuterTrianglesAndHoles();
 
         Assert.True(TopologyVerifier.VerifyTopology(cdt));
+        Assert.True(TopologyVerifier.VerifyWinding(cdt));
         GroundTruthHelpers.AssertTopologyMatchesFile(cdt, expectedPath);
     }
 }

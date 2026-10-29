@@ -30,11 +30,21 @@ public abstract class TriangulationTestsBase<T>
         cdt.InsertVertices([Pt(0, 0), Pt(1, 1), Pt(3, 1), Pt(3, 0)]);
 
         Assert.True(TopologyVerifier.VerifyTopology(cdt));
+        Assert.True(TopologyVerifier.VerifyWinding(cdt));
         // 4 user vertices + 3 super-triangle vertices
         Assert.Equal(7, cdt.Vertices.Length);
         Assert.Empty(cdt.FixedEdges);
         // 4 vertices inside a super-triangle → 9 triangles
         Assert.Equal(9, cdt.Triangles.Length);
+    }
+
+    [Fact]
+    public void VerifyWinding_RejectsClockwiseTriangle()
+    {
+        var vertices = new[] { Pt(0, 0), Pt(1, 0), Pt(0, 1) };
+        var triangle = new[] { new Triangle(0, 2, 1, -1, -1, -1) };
+
+        Assert.False(TopologyVerifier.VerifyWinding(vertices, triangle));
     }
 
     [Fact]
@@ -261,6 +271,59 @@ public abstract class TriangulationTestsBase<T>
         Assert.True(cdt.IsFinalized);
         Assert.Throws<TriangulationFinalizedException>(() =>
             cdt.ConformToEdges([new Edge(0, 2)]));
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void ConstraintEdge_NearExistingVertex_SplitsAtVertex(bool conforming)
+    {
+        var cdt = new Triangulation<T>(
+            VertexInsertionOrder.AsProvided,
+            IntersectingConstraintEdges.NotAllowed,
+            F(1e-3));
+        cdt.InsertVertices(
+        [
+            Pt(1, 0), Pt(0, 1), Pt(0, 0),
+            Pt(0.23263432516898214, 0.76736567483101781),
+            Pt(0.13422178907162741, 0),
+        ]);
+        var edges = new[]
+        {
+            new Edge(0, 1), new Edge(1, 2), new Edge(2, 0),
+            new Edge(3, 4), new Edge(3, 4),
+        };
+
+        if (conforming) cdt.ConformToEdges(edges);
+        else cdt.InsertEdges(edges);
+        cdt.EraseOuterTrianglesAndHoles();
+
+        Assert.Equal(3, cdt.Triangles.Length);
+        Assert.Contains(new Edge(0, 3), cdt.FixedEdges);
+        Assert.Contains(new Edge(1, 3), cdt.FixedEdges);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void ConstraintEdge_NearVertexOutsideDiametralCircle_IsNotSplit(bool conforming)
+    {
+        var cdt = new Triangulation<T>(
+            VertexInsertionOrder.AsProvided,
+            IntersectingConstraintEdges.NotAllowed,
+            F(1e-3));
+        cdt.InsertVertices(
+        [
+            Pt(0, 0), Pt(1, 0), Pt(1e-7, 5e-4), Pt(0.5, 1), Pt(-1, 1),
+        ]);
+        var edges = new[] { new Edge(0, 1) };
+
+        if (conforming) cdt.ConformToEdges(edges);
+        else cdt.InsertEdges(edges);
+        cdt.EraseSuperTriangle();
+
+        Assert.Single(cdt.FixedEdges);
+        Assert.Contains(new Edge(0, 1), cdt.FixedEdges);
     }
 
     [Fact]

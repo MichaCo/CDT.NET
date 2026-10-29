@@ -542,6 +542,70 @@ public static class CdtUtils
     }
 
     /// <summary>
+    /// Returns whether <paramref name="p"/> lies strictly inside the circle
+    /// whose diameter is the segment from <paramref name="a"/> to <paramref name="b"/>.
+    /// </summary>
+    public static bool IsEncroachingOnEdge<T>(V2d<T> p, V2d<T> a, V2d<T> b)
+        where T : unmanaged, IFloatingPoint<T>
+        => PredicatesAdaptive.InDiamCircle(
+            double.CreateChecked(a.X), double.CreateChecked(a.Y),
+            double.CreateChecked(b.X), double.CreateChecked(b.Y),
+            double.CreateChecked(p.X), double.CreateChecked(p.Y)) > 0.0;
+
+    /// <summary>Computes the area of triangle <paramref name="a"/>, <paramref name="b"/>, <paramref name="c"/>.</summary>
+    public static T Area<T>(V2d<T> a, V2d<T> b, V2d<T> c)
+        where T : unmanaged, IFloatingPoint<T>
+        => T.Abs(Orient2D(a, b, c)) / (T.One + T.One);
+
+    /// <summary>Computes the circumcenter of a non-degenerate triangle.</summary>
+    public static V2d<T> Circumcenter<T>(V2d<T> a, V2d<T> b, V2d<T> c)
+        where T : unmanaged, IFloatingPoint<T>
+    {
+        T two = T.One + T.One;
+        T denom = two * Orient2D(a, b, c);
+        if (denom == T.Zero) throw new ArgumentException("Cannot compute the circumcenter of a degenerate triangle.");
+
+        T aLenSq = DistanceSquared(a, c);
+        T bLenSq = DistanceSquared(b, c);
+        a = new V2d<T>(a.X - c.X, a.Y - c.Y);
+        b = new V2d<T>(b.X - c.X, b.Y - c.Y);
+        return new V2d<T>(
+            c.X + (b.Y * aLenSq - a.Y * bLenSq) / denom,
+            c.Y + (a.X * bLenSq - b.X * aLenSq) / denom);
+    }
+
+    /// <summary>Computes the smallest interior angle of a non-degenerate triangle, in radians.</summary>
+    public static T SmallestAngle<T>(V2d<T> a, V2d<T> b, V2d<T> c)
+        where T : unmanaged, IFloatingPoint<T>, IRootFunctions<T>
+    {
+        T sideA = Distance(a, b);
+        T sideB = Distance(b, c);
+        if (sideA > sideB) (sideA, sideB) = (sideB, sideA);
+        sideA = T.Max(sideA, Distance(a, c));
+        T sine = (T.One + T.One) * Area(a, b, c) / sideA / sideB;
+        return T.CreateChecked(Math.Asin(double.CreateChecked(sine)));
+    }
+
+    /// <summary>Converts an angle in degrees to radians.</summary>
+    public static T DegToRad<T>(T degrees)
+        where T : IFloatingPoint<T>
+        => degrees / T.CreateChecked(180) * T.Pi;
+
+    internal static bool IsAngleAtApexSmall<T>(V2d<T> apex, V2d<T> a, V2d<T> b)
+        where T : unmanaged, IFloatingPoint<T>, IRootFunctions<T>
+    {
+        T ux = a.X - apex.X, uy = a.Y - apex.Y;
+        T wx = b.X - apex.X, wy = b.Y - apex.Y;
+        T dot = ux * wx + uy * wy;
+        return dot > T.Zero &&
+               (T.One + T.One) * dot > Distance(apex, a) * Distance(apex, b);
+    }
+
+    internal static T Lerp<T>(T a, T b, T t)
+        where T : IFloatingPoint<T>
+        => (T.One - t) * a + t * b;
+
+    /// <summary>
     /// Computes the squared Euclidean distance between two points.
     /// </summary>
     /// <typeparam name="T">Floating-point coordinate type.</typeparam>

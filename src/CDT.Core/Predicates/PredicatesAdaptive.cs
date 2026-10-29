@@ -4,6 +4,7 @@
 //
 // Geometric predicates — port of Lenthe/Shewchuk adaptive predicates from
 // artem-ogre/CDT (predicates.h, predicates::adaptive namespace).
+// Copyright (c) 2019, William C. Lenthe. See LICENSE-predicates.txt.
 
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
@@ -332,6 +333,58 @@ public static class PredicatesAdaptive
         }
 
         return PredicatesExact.InCircle(ax, ay, bx, by, cx, cy, dx, dy);
+    }
+
+    /// <summary>
+    /// Returns positive when point c lies strictly inside the circle with
+    /// diameter ab, zero when it lies on the circle, and negative when outside.
+    /// </summary>
+    public static double InDiamCircle(
+        double ax, double ay, double bx, double by, double cx, double cy)
+    {
+        double acx = ax - cx, acy = ay - cy;
+        double bcx = bx - cx, bcy = by - cy;
+        double nbcx = -bcx;
+        double detleft = acx * nbcx;
+        double detright = acy * bcy;
+        double det = detleft - detright;
+
+        if ((detleft < 0.0) != (detright < 0.0)) return det;
+        if (detleft == 0.0 || detright == 0.0) return det;
+
+        double detsum = Math.Abs(detleft + detright);
+        if (Math.Abs(det) >= CcwBoundAD * detsum) return det;
+
+        Span<double> b = stackalloc double[4];
+        int bLen = TwoTwoDiff(acx, nbcx, acy, bcy, b);
+        det = Estimate(b, bLen);
+        if (Math.Abs(det) >= CcwBoundBD * detsum) return det;
+
+        double acxtail = MinusTail(ax, cx, acx);
+        double acytail = MinusTail(ay, cy, acy);
+        double bcxtail = MinusTail(bx, cx, bcx);
+        double bcytail = MinusTail(by, cy, bcy);
+        double nbcxtail = -bcxtail;
+        if (acxtail == 0.0 && nbcxtail == 0.0 && acytail == 0.0 && bcytail == 0.0)
+            return det;
+
+        double errbound = CcwBoundCD * detsum + ResultErrBound * Math.Abs(det);
+        det += (acx * nbcxtail + nbcx * acxtail) - (acy * bcytail + bcy * acytail);
+        if (Math.Abs(det) >= errbound) return det;
+
+        Span<double> s1 = stackalloc double[4];
+        int s1Len = TwoTwoDiff(acxtail, nbcx, acytail, bcy, s1);
+        Span<double> s2 = stackalloc double[4];
+        int s2Len = TwoTwoDiff(acx, nbcxtail, acy, bcytail, s2);
+        Span<double> s3 = stackalloc double[4];
+        int s3Len = TwoTwoDiff(acxtail, nbcxtail, acytail, bcytail, s3);
+        Span<double> t1 = stackalloc double[8];
+        int t1Len = ExpansionSum(b, bLen, s1, s1Len, t1);
+        Span<double> t2 = stackalloc double[12];
+        int t2Len = ExpansionSum(t1, t1Len, s2, s2Len, t2);
+        Span<double> d = stackalloc double[16];
+        int dLen = ExpansionSum(t2, t2Len, s3, s3Len, d);
+        return MostSignificant(d, dLen);
     }
 
     // =========================================================================

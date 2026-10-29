@@ -297,6 +297,38 @@ public enum IntersectingConstraintEdges
     DontCheck,
 }
 
+/// <summary>Criterion used to identify triangles needing refinement.</summary>
+public enum RefinementCriterion
+{
+    /// <summary>Refine triangles whose smallest angle is below the threshold.</summary>
+    SmallestAngle,
+
+    /// <summary>Refine triangles whose area is above the threshold.</summary>
+    LargestArea,
+}
+
+/// <summary>Counts of refinement attempts that could not be completed.</summary>
+public struct Unrefined
+{
+    /// <summary>Triangles left unrefined because their shortest edge is too short.</summary>
+    public int ShortEdgeTriangles { get; internal set; }
+
+    /// <summary>Triangles whose circumcenter lies outside the triangulated area.</summary>
+    public int CircumcenterOutside { get; internal set; }
+
+    /// <summary>Triangles whose circumcenter coincides with an existing vertex.</summary>
+    public int CircumcenterOnVertex { get; internal set; }
+
+    /// <summary>Triangles whose smallest angle is enclosed by fixed edges.</summary>
+    public int SharpFixedCorner { get; internal set; }
+
+    /// <summary>Fixed edges left unsplit because their length is too short.</summary>
+    public int ShortEdges { get; internal set; }
+
+    /// <summary>Fixed edges whose split vertex would break topology.</summary>
+    public int SplitVertexInvalid { get; internal set; }
+}
+
 /// <summary>Layer depth type (used for hole detection).</summary>
 public readonly struct LayerDepth
 {
