@@ -30,11 +30,21 @@ public abstract class TriangulationTestsBase<T>
         cdt.InsertVertices([Pt(0, 0), Pt(1, 1), Pt(3, 1), Pt(3, 0)]);
 
         Assert.True(TopologyVerifier.VerifyTopology(cdt));
+        Assert.True(TopologyVerifier.VerifyWinding(cdt));
         // 4 user vertices + 3 super-triangle vertices
         Assert.Equal(7, cdt.Vertices.Length);
         Assert.Empty(cdt.FixedEdges);
         // 4 vertices inside a super-triangle → 9 triangles
         Assert.Equal(9, cdt.Triangles.Length);
+    }
+
+    [Fact]
+    public void VerifyWinding_RejectsClockwiseTriangle()
+    {
+        var vertices = new[] { Pt(0, 0), Pt(1, 0), Pt(0, 1) };
+        var triangle = new[] { new Triangle(0, 2, 1, -1, -1, -1) };
+
+        Assert.False(TopologyVerifier.VerifyWinding(vertices, triangle));
     }
 
     [Fact]

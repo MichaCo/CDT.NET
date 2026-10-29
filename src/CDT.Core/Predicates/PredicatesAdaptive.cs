@@ -4,6 +4,7 @@
 //
 // Geometric predicates — port of Lenthe/Shewchuk adaptive predicates from
 // artem-ogre/CDT (predicates.h, predicates::adaptive namespace).
+// Copyright (c) 2019, William C. Lenthe. See LICENSE-predicates.txt.
 
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;

@@ -93,7 +93,7 @@ public sealed class InvalidEdgeSplitVertexException : TriangulationException
 /// Supports both constrained and conforming modes.
 /// </summary>
 /// <typeparam name="T">Floating-point coordinate type (float or double).</typeparam>
-public sealed class Triangulation<T>
+public sealed partial class Triangulation<T>
     where T : unmanaged, IFloatingPoint<T>, IMinMaxValue<T>, IRootFunctions<T>
 {
     // -------------------------------------------------------------------------
@@ -310,25 +310,14 @@ public sealed class Triangulation<T>
     {
         if (IsFinalized) throw new TriangulationFinalizedException();
         if (_superGeomType != SuperGeometryType.SuperTriangle) return;
-        var toErase = new HashSet<int>();
-        for (int i = 0; i < _trianglesCount; i++)
-        {
-            if (CdtUtils.TouchesSuperTriangle(_triangles[i]))
-                toErase.Add(i);
-        }
-        FinalizeTriangulation(toErase);
+        FinalizeTriangulation(CollectSuperTriangle());
     }
 
     /// <summary>Removes all outer triangles (flood-fill from super-triangle vertex until a constraint edge).</summary>
     public void EraseOuterTriangles()
     {
         if (IsFinalized) throw new TriangulationFinalizedException();
-        if (_vertTris[0] == Indices.NoNeighbor)
-            throw new TriangulationException("No vertex triangle data – already finalized?");
-        var seeds = new Stack<int>();
-        seeds.Push(_vertTris[0]);
-        var toErase = GrowToBoundary(seeds);
-        FinalizeTriangulation(toErase);
+        FinalizeTriangulation(CollectOuterTriangles());
     }
 
     /// <summary>
@@ -338,13 +327,44 @@ public sealed class Triangulation<T>
     public void EraseOuterTrianglesAndHoles()
     {
         if (IsFinalized) throw new TriangulationFinalizedException();
+        FinalizeTriangulation(CollectOuterTrianglesAndHoles());
+    }
+
+    /// <summary>Collects triangles touching the super-triangle.</summary>
+    public HashSet<int> CollectSuperTriangle()
+    {
+        if (IsFinalized) throw new TriangulationFinalizedException();
+        var toErase = new HashSet<int>();
+        if (_superGeomType != SuperGeometryType.SuperTriangle) return toErase;
+        for (int i = 0; i < _trianglesCount; i++)
+        {
+            if (CdtUtils.TouchesSuperTriangle(_triangles[i])) toErase.Add(i);
+        }
+        return toErase;
+    }
+
+    /// <summary>Collects triangles outside the constrained boundary.</summary>
+    public HashSet<int> CollectOuterTriangles()
+    {
+        if (IsFinalized) throw new TriangulationFinalizedException();
+        if (_vertTrisCount == 0 || _vertTris[0] == Indices.NoNeighbor)
+            throw new TriangulationException("No vertex triangle data – already finalized?");
+        var seeds = new Stack<int>();
+        seeds.Push(_vertTris[0]);
+        return GrowToBoundary(seeds);
+    }
+
+    /// <summary>Collects triangles outside the constrained boundary and in detected holes.</summary>
+    public HashSet<int> CollectOuterTrianglesAndHoles()
+    {
+        if (IsFinalized) throw new TriangulationFinalizedException();
         var depths = CalculateTriangleDepths();
         var toErase = new HashSet<int>();
         for (int i = 0; i < _trianglesCount; i++)
         {
             if (depths[i] % 2 == 0) toErase.Add(i);
         }
-        FinalizeTriangulation(toErase);
+        return toErase;
     }
 
     /// <summary>
@@ -593,7 +613,7 @@ public sealed class Triangulation<T>
                 out int itopo, out int iv2, out int iv3, out int iv4,
                 out int n1, out int n2, out int n3, out int n4);
 
-            if (itopo != Indices.NoNeighbor && IsFlipNeeded(iV, iv2, iv3, iv4))
+            if (itopo != Indices.NoNeighbor && IsFlipNeeded(iV, iv2, iv3, iv4, doFlipFixedEdges: true))
             {
                 var flippedEdge = new Edge(iv2, iv4);
                 if (_fixedEdges.Contains(flippedEdge))
@@ -816,10 +836,14 @@ public sealed class Triangulation<T>
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private bool IsFlipNeeded(int iV1, int iV2, int iV3, int iV4)
+    private bool IsFlipNeeded(int iV1, int iV2, int iV3, int iV4, bool doFlipFixedEdges = false)
     {
-        // Skip HashSet lookup when there are no fixed edges (pure vertex-insertion path).
-        if (_fixedEdges.Count > 0 && _fixedEdges.Contains(new Edge(iV2, iV4))) return false;
+        var oldEdge = new Edge(iV2, iV4);
+        if (!doFlipFixedEdges && _fixedEdges.Contains(oldEdge)) return false;
+        if (_fixedEdges.Count > 0 &&
+            (IsSameOriginalEdge(new Edge(iV1, iV2), new Edge(iV2, iV3)) ||
+             IsSameOriginalEdge(new Edge(iV3, iV4), new Edge(iV4, iV1))))
+            return false;
 
         var v1 = _vertices[iV1];
         var v2 = _vertices[iV2];
@@ -851,6 +875,18 @@ public sealed class Triangulation<T>
                 return LocatePointLine(v4, v2, v3) == LocatePointLine(v1, v2, v3);
         }
         return IsInCircumcircle(v1, v2, v3, v4);
+    }
+
+    private bool IsSameOriginalEdge(Edge e1, Edge e2)
+    {
+        if (!_fixedEdges.Contains(e1) || !_fixedEdges.Contains(e2)) return false;
+        var original1 = _pieceToOriginals.TryGetValue(e1, out var pieces1) && pieces1.Count > 0
+            ? pieces1[0]
+            : e1;
+        var original2 = _pieceToOriginals.TryGetValue(e2, out var pieces2) && pieces2.Count > 0
+            ? pieces2[0]
+            : e2;
+        return original1 == original2;
     }
 
     private void FlipEdge(
@@ -1016,7 +1052,7 @@ public sealed class Triangulation<T>
                 if (_fixedEdges.Contains(edgeLR))
                 {
                     var newV = IntersectionPosition(_vertices[iA], _vertices[iB], _vertices[iVL], _vertices[iVR]);
-                    if (!IsEdgeSplitVertexValid(newV, iT, iTopo, iVL, iVR))
+                    if (!IsEdgeSplitVertexValid(newV, iT, iTopo))
                     {
                         throw new InvalidEdgeSplitVertexException(
                             OriginalInputEdge(originalEdge),
@@ -1142,7 +1178,7 @@ public sealed class Triangulation<T>
                 if (_fixedEdges.Contains(edgeLR))
                 {
                     var newV = IntersectionPosition(_vertices[iA], _vertices[iB], _vertices[iVleft], _vertices[iVright]);
-                    if (!IsEdgeSplitVertexValid(newV, iT, iTopo, iVleft, iVright))
+                    if (!IsEdgeSplitVertexValid(newV, iT, iTopo))
                     {
                         throw new InvalidEdgeSplitVertexException(
                             OriginalInputEdge(edge),
@@ -1384,9 +1420,9 @@ public sealed class Triangulation<T>
         AddNewVertex(splitVert, Indices.NoNeighbor);
         var stack = new Stack<int>(4);
         InsertVertexOnEdge(iSplit, iT, iTopo, handleFixedSplitEdge: false, stack);
+        SplitFixedEdge(edge, iSplit);
         TryAddVertexToLocator(iSplit);
         EnsureDelaunayByEdgeFlips(iSplit, stack);
-        SplitFixedEdge(edge, iSplit);
         return iSplit;
     }
 
@@ -1403,31 +1439,20 @@ public sealed class Triangulation<T>
     /// selects the adjacent triangle it must be contained in; only the two other
     /// edges of that triangle are tested (robust predicates).
     /// </remarks>
-    private bool IsEdgeSplitVertexValid(V2d<T> splitVert, int iT, int iTopo, int iVL, int iVR)
+    private bool IsEdgeSplitVertexValid(V2d<T> splitVert, int iT, int iTopo)
     {
-        // Orient the split edge as it appears (counter-clockwise) in iT. Locating
-        // the (floating-point-rounded) split vertex against it both tells whether
-        // the split is safe and which of the two triangles sharing the edge must
-        // contain the vertex: 'Left' is iT's interior side, 'Right' is iTopo's.
-        var tL = _triangles[iT];
-        int sL = CdtUtils.EdgeNeighborIndex(tL, iVL, iVR);
-        var side = LocatePointLine(splitVert, _vertices[tL.GetVertex(sL)], _vertices[tL.GetVertex(CdtUtils.Ccw(sL))]);
-        if (side == PtLineLocation.OnLine)
-        {
-            return splitVert != _vertices[iVL] && splitVert != _vertices[iVR];
-        }
-        var t = side == PtLineLocation.Left ? tL : _triangles[iTopo];
-
-        // The split vertex must not fall outside that triangle. Its relation to the
-        // split edge is already established by 'side', so only the two edges meeting
-        // at the apex (opposite the split edge) are tested. A point to the right of
-        // a counter-clockwise triangle's edge lies outside it.
-        int s = CdtUtils.EdgeNeighborIndex(t, iVL, iVR);
-        var from = _vertices[t.GetVertex(s)];             // split edge tail (CCW)
-        var to = _vertices[t.GetVertex(CdtUtils.Ccw(s))]; // split edge head (CCW)
-        var apex = _vertices[t.GetVertex(CdtUtils.Cw(s))]; // opposite the split edge
-        return LocatePointLine(splitVert, to, apex) != PtLineLocation.Right &&
-               LocatePointLine(splitVert, apex, from) != PtLineLocation.Right;
+        var t1 = _triangles[iT];
+        int i = CdtUtils.OpposedVertexIndex(CdtUtils.NeighborIndex(t1, iTopo));
+        var v1 = _vertices[t1.GetVertex(i)];
+        var v2 = _vertices[t1.GetVertex(CdtUtils.Ccw(i))];
+        var v4 = _vertices[t1.GetVertex(CdtUtils.Cw(i))];
+        var t2 = _triangles[iTopo];
+        var v3 = _vertices[t2.GetVertex(
+            CdtUtils.OpposedVertexIndex(CdtUtils.NeighborIndex(t2, iT)))];
+        return LocatePointLine(splitVert, v1, v2) == PtLineLocation.Left &&
+               LocatePointLine(splitVert, v2, v3) == PtLineLocation.Left &&
+               LocatePointLine(splitVert, v3, v4) == PtLineLocation.Left &&
+               LocatePointLine(splitVert, v4, v1) == PtLineLocation.Left;
     }
 
     /// <summary>
@@ -1544,8 +1569,10 @@ public sealed class Triangulation<T>
         return traversed;
     }
 
-    private void FinalizeTriangulation(HashSet<int> removedTriangles)
+    /// <summary>Removes the super-triangle and the specified triangles, then finalizes the mesh.</summary>
+    public void FinalizeTriangulation(IReadOnlySet<int> removedTriangles)
     {
+        if (IsFinalized) throw new TriangulationFinalizedException();
         _vertTrisCount = 0;
 
         if (_superGeomType == SuperGeometryType.SuperTriangle)
@@ -1603,7 +1630,7 @@ public sealed class Triangulation<T>
         foreach (var kv in updated) dict[kv.Key] = kv.Value;
     }
 
-    private void RemoveTriangles(HashSet<int> removed)
+    private void RemoveTriangles(IReadOnlySet<int> removed)
     {
         if (removed.Count == 0) return;
         // Build a flat bool[] for O(1) indexed lookup — replaces all HashSet.Contains calls
