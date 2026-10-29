@@ -542,6 +542,17 @@ public static class CdtUtils
     }
 
     /// <summary>
+    /// Returns whether <paramref name="p"/> lies strictly inside the circle
+    /// whose diameter is the segment from <paramref name="a"/> to <paramref name="b"/>.
+    /// </summary>
+    public static bool IsEncroachingOnEdge<T>(V2d<T> p, V2d<T> a, V2d<T> b)
+        where T : unmanaged, IFloatingPoint<T>
+        => PredicatesAdaptive.InDiamCircle(
+            double.CreateChecked(a.X), double.CreateChecked(a.Y),
+            double.CreateChecked(b.X), double.CreateChecked(b.Y),
+            double.CreateChecked(p.X), double.CreateChecked(p.Y)) > 0.0;
+
+    /// <summary>
     /// Computes the squared Euclidean distance between two points.
     /// </summary>
     /// <typeparam name="T">Floating-point coordinate type.</typeparam>

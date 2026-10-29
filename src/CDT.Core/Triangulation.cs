@@ -885,24 +885,30 @@ public sealed class Triangulation<T>
         int iA = edge.V1, iB = edge.V2;
         if (iA == iB) return;
 
-        if (HasEdge(iA, iB))
-        {
-            FixEdge(edge, originalEdge);
-            return;
-        }
-
         var a = _vertices[iA];
         var b = _vertices[iB];
         T distTol = _minDistToConstraintEdge == T.Zero
             ? T.Zero
             : _minDistToConstraintEdge * CdtUtils.Distance(a, b);
 
+        if (HasEdge(iA, iB))
+        {
+            int iVSplit = OpposedVertexOnEdge(edge, distTol);
+            if (iVSplit != Indices.NoVertex)
+            {
+                remaining.Add(new Edge(iVSplit, iB));
+                remaining.Add(new Edge(iA, iVSplit));
+                return;
+            }
+            FixEdge(edge, originalEdge);
+            return;
+        }
+
         var (iT, iVL, iVR) = IntersectedTriangle(iA, a, b, distTol);
         if (iT == Indices.NoNeighbor)
         {
-            var edgePart = new Edge(iA, iVL);
-            FixEdge(edgePart, originalEdge);
             remaining.Add(new Edge(iVL, iB));
+            remaining.Add(new Edge(iA, iVL));
             return;
         }
 
@@ -1038,8 +1044,21 @@ public sealed class Triangulation<T>
         int iA = edge.V1, iB = edge.V2;
         if (iA == iB) return;
 
+        var a = _vertices[iA];
+        var b = _vertices[iB];
+        T distTol = _minDistToConstraintEdge == T.Zero
+            ? T.Zero
+            : _minDistToConstraintEdge * CdtUtils.Distance(a, b);
+
         if (HasEdge(iA, iB))
         {
+            int iVSplit = OpposedVertexOnEdge(edge, distTol);
+            if (iVSplit != Indices.NoVertex)
+            {
+                remaining.Add(new ConformToEdgeTask(new Edge(iVSplit, iB), originals, overlaps));
+                remaining.Add(new ConformToEdgeTask(new Edge(iA, iVSplit), originals, overlaps));
+                return;
+            }
             FixEdge(edge);
             if (overlaps > 0) _overlapCount[edge] = overlaps;
             if (originals.Count > 0 && edge != originals[0])
@@ -1047,20 +1066,11 @@ public sealed class Triangulation<T>
             return;
         }
 
-        var a = _vertices[iA];
-        var b = _vertices[iB];
-        T distTol = _minDistToConstraintEdge == T.Zero
-            ? T.Zero
-            : _minDistToConstraintEdge * CdtUtils.Distance(a, b);
-
         var (iT, iVleft, iVright) = IntersectedTriangle(iA, a, b, distTol);
         if (iT == Indices.NoNeighbor)
         {
-            var part = new Edge(iA, iVleft);
-            FixEdge(part);
-            if (overlaps > 0) _overlapCount[part] = overlaps;
-            InsertUnique(_pieceToOriginals.GetOrAdd(part), originals);
             remaining.Add(new ConformToEdgeTask(new Edge(iVleft, iB), originals, overlaps));
+            remaining.Add(new ConformToEdgeTask(new Edge(iA, iVleft), originals, overlaps));
             return;
         }
 
@@ -1465,6 +1475,47 @@ public sealed class Triangulation<T>
             (iT, _) = t.Next(va);
         } while (iT != startTri && iT != Indices.NoNeighbor);
         return false;
+    }
+
+    private (int iT, int iTopo) EdgeTriangles(int va, int vb)
+    {
+        int startTri = _vertTris[va];
+        if (startTri == Indices.NoNeighbor) return (Indices.NoNeighbor, Indices.NoNeighbor);
+
+        int iT = startTri;
+        do
+        {
+            var t = _triangles[iT];
+            var (iNext, otherVertex) = t.Next(va);
+            if (otherVertex == vb) return (iT, iNext);
+            iT = iNext;
+        } while (iT != startTri && iT != Indices.NoNeighbor);
+        return (Indices.NoNeighbor, Indices.NoNeighbor);
+    }
+
+    private int OpposedVertexOnEdge(Edge edge, T tolerance)
+    {
+        if (_fixedEdges.Contains(edge)) return Indices.NoVertex;
+
+        var (iT, iTopo) = EdgeTriangles(edge.V1, edge.V2);
+        if (iT == Indices.NoNeighbor || iTopo == Indices.NoNeighbor)
+            return Indices.NoVertex;
+
+        var a = _vertices[edge.V1];
+        var b = _vertices[edge.V2];
+        int[] opposedVertices =
+        [
+            CdtUtils.OpposedVertex(_triangles[iT], iTopo),
+            CdtUtils.OpposedVertex(_triangles[iTopo], iT),
+        ];
+        foreach (int iV in opposedVertices)
+        {
+            var v = _vertices[iV];
+            if (LocatePointLine(v, a, b, tolerance) == PtLineLocation.OnLine &&
+                CdtUtils.IsEncroachingOnEdge(v, a, b))
+                return iV;
+        }
+        return Indices.NoVertex;
     }
 
     // -------------------------------------------------------------------------

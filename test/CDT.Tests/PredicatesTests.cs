@@ -46,6 +46,17 @@ public sealed class PredicatesTests
         double r = PredicatesAdaptive.InCircle(0, 0, 4, 0, 2, 4, 2, -2);
         Assert.True(r < 0);
     }
+
+    [Theory]
+    [InlineData(0.5, 0.1, true)]
+    [InlineData(0.1, 0.5, false)]
+    [InlineData(0.5, 0.5, false)]
+    public void IsEncroachingOnEdge_UsesStrictDiametralCircle(
+        double x, double y, bool expected)
+    {
+        Assert.Equal(expected, CdtUtils.IsEncroachingOnEdge(
+            new V2d<double>(x, y), new V2d<double>(0, 0), new V2d<double>(1, 0)));
+    }
 }
 
 /// <summary>Tests for triangle utils.</summary>
@@ -144,4 +155,3 @@ public sealed class EdgeTests
         Assert.Contains(new Edge(2, 1), set);
     }
 }
-
